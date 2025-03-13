@@ -879,7 +879,7 @@ UMAP = ggplot(data = as.data.frame(spe_ruv@int_colData@listData$reducedDims$UMAP
   theme_classic()
 
 getwd()
-pdf(paste0(gsub(' ','',Run), "_TMM_RUV_.pdf"), width = 8, height = 8)
+pdf(paste0(gsub(' ','',Run), "_TMM_RUV_UMAP.pdf"), width = 8, height = 8)
 UMAP
 dev.off()
 
@@ -1269,8 +1269,8 @@ DEG_Plot = ggplot(de_results_BvT,
   geom_vline(xintercept = c(0.5, -0.5), lty = "dashed") +
   geom_hline(yintercept = -log10(0.05), lty = "dashed") +
   geom_point() +
-  labs(x = "Log2 fold-change",
-       y = "-log10 (P.Value)",
+  labs(x = expression(paste('Log'['10'],'P')),
+       y = expression(paste('Log'['2'],' fold change')),
        color = "Significance") +
   scale_color_manual(values = c(`FDR < 0.01 & down-regulated` = "dodgerblue",
                                 `FDR < 0.01 & up-regulated` = "darkred",
@@ -1284,64 +1284,12 @@ DEG_Plot = ggplot(de_results_BvT,
                   min.segment.length = .1, box.padding = .2, lwd = 2,
                   max.overlaps = 50) +
   theme_bw(base_size = 20) +
-  theme(legend.position = "bottom") 
+  theme(legend.position = "bottom")
 
 getwd()
 pdf(paste0(gsub(' ','',Run), "_", query, "_", control, "_DEG_Plot.pdf"), width = 10.5, height = 8)
 print(DEG_Plot)
 dev.off()
-            
-
-## ----------------------------------------------------------------------------- heatmap
-View(assay(spe_ruv, "logcounts"))
-View(design)
-assay(spe_ruv, "logcounts"), design = design
-
-CountMatrix = rbindlist(list(counts_aggregate_upregulated[1:10,], counts_aggregate_downregulated[1:10,]))
-CountMatrix = as.data.frame(CountMatrix)
-rownames(CountMatrix) = c(row.names(counts_aggregate_upregulated)[1:10], row.names(counts_aggregate_downregulated)[1:10])
-
-dim(CountMatrix)
-colnames(CountMatrix) 
-
-
-State = as.character(colnames(CountMatrix))
-State[grep('V', State)] = 'Vulnerable Neurons'
-State[grep('R', State)] = 'Resistant Neurons'
-
-annotation_col = data.frame(
-  State = factor(State, levels = c('Vulnerable Neurons', 'Resistant Neurons'))
-)
-rownames(annotation_col) = as.character(colnames(CountMatrix))
-str(annotation_col)
-
-annotation_row = data.frame(
-  GeneClass = factor(rep(c('Up-regulated', 'Down-regulated'), c(10, 10)))
-)
-
-rownames(annotation_row) = c(row.names(counts_aggregate_upregulated)[1:10], row.names(counts_aggregate_downregulated)[1:10])
-identical(row.names(CountMatrix), row.names(annotation_row))
-
-row.names(subsetting_down)
-
-ann_colors = list(
-  State = c(`Vulnerable Neurons` = "#1B9E77", `Resistant Neurons` = "#D95F02"),
-  GeneClass = c(`Up-regulated` = "#7570B3", `Down-regulated` = "#E7298A")
-)
-
-#-- revise colnames
-colnames(CountMatrix)[grep('V', colnames(CountMatrix))] = rep(paste0('Donor-', 1:length(grep('V', colnames(CountMatrix))), '-V' ), each = 1)
-colnames(CountMatrix)[grep('R', colnames(CountMatrix))] = rep(paste0('Donor-', 1:length(grep('R', colnames(CountMatrix))), '-R' ), each = 1)
-#--
-
-p <- pheatmap(CountMatrix, annotation_col = annotation_col, annotation_row = annotation_row, 
-              annotation_colors = ann_colors, 
-              row_split = annotation_row$GeneClass,
-              column_split = annotation_col$State, name = "Expression", scale='row',
-              fontsize_number=8, display_numbers = round(as.matrix(CountMatrix), digits = 1), cluster_cols=FALSE  )
-p
-
-
 
 
 ## ----------------------------------------------------------------------------- visualization of DEGs as table
