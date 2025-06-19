@@ -1,6 +1,57 @@
+# https://www.bioconductor.org/packages/release/workflows/vignettes/GeoMxWorkflows/inst/doc/GeomxTools_RNA-NGS_Analysis.html#1_Introduction
+# https://davislaboratory.github.io/GeoMXAnalysisWorkflow/articles/GeoMXAnalysisWorkflow.html
 
-#============================================ Repeat the analysis using new parameters
+# line 248 : Data <- Data[, QCResults$QCStatus == "PASS"]
 
+#============================================ prepare annotation files
+# datadir0 <- file.path("/Users/isarnassiri/Documents/GeoMx_Analysis/")
+# setwd(datadir0)
+# 
+# library(data.table)
+# PD_FULL = fread(paste0('PD_FULL_Annotation.txt'), stringsAsFactors = F)
+# CONTROL_FULL = fread(paste0('CONTROL_FULL_Annotation.txt'), stringsAsFactors = F)
+# SELECTED_SAMPLES = fread(paste0('PD_CONTROL_SELECTED_SAMPLES.txt'), stringsAsFactors = F)
+# 
+# length(intersect(SELECTED_SAMPLES$Case, PD_FULL$Case))
+# length(intersect(SELECTED_SAMPLES$Case, CONTROL_FULL$Case))
+# 
+# PD_FULL_subset = PD_FULL[which(PD_FULL$Case %in% SELECTED_SAMPLES$Case),]
+# 
+# fwrite(PD_FULL_subset, paste0(datadir0, 'PD_FULL_GeoMx_16n.txt'), quote = F, row.names = F, sep = '\t')
+# 
+# PD_FULL_subset = PD_FULL_subset[!is.na(PD_FULL_subset$clusters),]
+# 
+# PD_FULL_subset[which(PD_FULL_subset$`LB Braak stage` == "5 or 6"),"LB Braak stage"] = "5"
+# 
+# PD_FULL_subset$`LB Braak stage` = paste0('Braak', PD_FULL_subset$`LB Braak stage`)
+# PD_FULL_subset$Dementia = paste0('Dementia_', PD_FULL_subset$Dementia)
+# 
+# PD_FULL_subset = as.data.frame(PD_FULL_subset)
+# class(PD_FULL_subset)
+# 
+# # xtabs(~clusters+Gender,data=PD_FULL_subset), 
+# INPUTCCA = cbind(xtabs(~clusters+Dementia,data=PD_FULL_subset), xtabs(~clusters+`LB Braak stage`,data=PD_FULL_subset))
+# 
+# rowsums = as.matrix(apply(INPUTCCA, 1, sum))
+# rowsums
+# 
+# colsums = as.matrix(apply(INPUTCCA, 2, sum))
+# t(colsums)
+# 
+# HCexp = rowsums %*%t (colsums) / sum(colsums)
+# 
+# library("vcd")
+# mosaicplot(INPUTCCA+1, shade=TRUE, las=1, type="pearson", cex.axis=0.7, main="")
+# 
+# HC = as.data.frame.matrix(INPUTCCA+1)
+# coaHC = dudi.coa(HC,scannf=FALSE,nf=2)
+# round(coaHC$eig[1:3]/sum(coaHC$eig)*100)
+# 
+# fviz_ca_biplot(coaHC, repel=TRUE, col.col="brown", col.row="purple") +
+#   ggtitle("") + ylim(c(-0.5,0.5))
+
+
+#============================================  
 library(GeomxTools)
 library(GeoMxWorkflows)
 library(NanoStringNCTools)
@@ -10,7 +61,7 @@ library(tidyverse)
 # This summarises the QC of the GeoMx pilot run of 10th October, utilising the 'GeoMxTools' pipeline.
 
 #============================================ Collate files
-datadir <- file.path("/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3_S4/")
+datadir <- file.path("/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3_S4_limma_20k/")
 setwd(datadir)
 
 DCCFiles <- dir(file.path(datadir, "dccs"), pattern = ".dcc$",
@@ -35,13 +86,15 @@ Data <-
                          protocolDataColNames = c("aoi","roi","state", "NucleiCount"),
                          experimentDataColNames = c("panel"))
 
-#============================================
-library(dplyr)
-library(ggforce)
-count_mat = data.frame(GeneSymbol = Data@featureData@data$TargetName, Data@assayData$exprs)
+# https://www.bioconductor.org/packages/release/workflows/vignettes/GeoMxWorkflows/inst/doc/GeomxTools_RNA-NGS_Analysis.html
 
-library(data.table)
-fwrite(count_mat, paste0(datadir, 'GeoMx_readCount.txt'), quote = F, row.names = F, sep = '\t')
+#============================================ this is before aggregation and it is not useable
+# library(dplyr)
+# library(ggforce)
+# count_mat = data.frame(GeneSymbol = Data@featureData@data$TargetName, Data@assayData$exprs)
+# 
+# library(data.table)
+# fwrite(count_mat, paste0(datadir, 'GeoMx_readCount.txt'), quote = F, row.names = F, sep = '\t')
 
 #============================================
 
@@ -56,11 +109,11 @@ QC_params <-
   list(minSegmentReads = 1000, # Minimum number of reads (1000)
        percentTrimmed = 80,    # Minimum % of reads trimmed (80%)
        percentStitched = 80,   # Minimum % of reads stitched (80%)
-       percentAligned = 75,    # Minimum % of reads aligned (80%)
+       percentAligned = 80,    # Minimum % of reads aligned (80%)
        percentSaturation = 50, # Minimum sequencing saturation (50%)
        minNegativeCount = 1,   # Minimum negative control counts (10)
        maxNTCCount = 20000,     # for WGT is 10K. Maximum counts observed in NTC well (1000)
-       minNuclei = 20,         # Minimum # of nuclei estimated (100)
+       minNuclei = 5,         # Minimum # of nuclei estimated (100)
        minArea = 1000)         # Minimum segment area (5000)
 
 Data <- setSegmentQCFlags(Data, qcCutoffs = QC_params)        
@@ -218,7 +271,14 @@ table(new_sData_df$segment[which(new_sData_df$RUN == 1)])
 
 #new_sData_df = new_sData_df[-grep('NegGeoMean',colnames(new_sData_df)),]
 library(data.table)
+
+new_sData_df$SampleID
+QCResults$SampleID = gsub('.dcc','',row.names(QCResults))
+
+new_sData_df = merge(new_sData_df, QCResults[,c('SampleID', 'QCStatus')], by = 'SampleID')
+
 fwrite(new_sData_df, paste0(datadir, 'QC_All.txt'), quote = F, row.names = F, sep = '\t')
+dim(new_sData_df)
 
 #============================================ summary of metadata
 SamplesMetadata = SamplesMetadata[which(SamplesMetadata$Sample_ID %in% sData_df$SampleID),]
@@ -336,9 +396,27 @@ dim(LOQ_Mat)
 #============================================ Segment Gene Detection
 # We first filter out segments with exceptionally low signal. These segments will have a small fraction of panel genes detected above the LOQ relative to the other segments in the study.
 
+#---- test the GenesDetected
+#View(target_Data@assayData$exprs)
+nGenesPerCell <- apply(target_Data@assayData$exprs, 2, function(x) sum(x>1))
+
+identical(names(nGenesPerCell), row.names(pData(target_Data)))
+
+#View(data.frame(original = pData(target_Data)$GenesDetected, extimate = nGenesPerCell))
+
+library(dplyr)
+library(ggforce)
+count_mat = data.frame(GeneSymbol = target_Data@featureData@data$TargetName, target_Data@assayData$exprs)
+dim(count_mat)
+library(data.table)
+fwrite(count_mat, paste0(datadir, 'GeoMx_readCount.txt'), quote = F, row.names = F, sep = '\t')
+
+#---- 
+
 # Save detection rate information to pheno data
 pData(target_Data)$GenesDetected <- 
   colSums(LOQ_Mat, na.rm = TRUE)
+
 pData(target_Data)$GeneDetectionRate <-
   pData(target_Data)$GenesDetected / nrow(target_Data)
 
@@ -360,11 +438,11 @@ ggplot(pData(target_Data),
        fill = "Segment Type")
 
 #============================================
-
 # cut percent genes detected at 1, 5, 10, 15
 kable(table(pData(target_Data)$DetectionThreshold, pData(target_Data)$segment))
+#View(pData(target_Data))
 
-#============================================ save QC incluidng gene detection rate
+#============================================ save QC incluidng gene detection rate [filters out segments]
 dimnames(pData(target_Data))[[2]]
 target_Data_df <- pData(target_Data)[, c("GenesDetected", "GeneDetectionRate", "DetectionThreshold")]
 
@@ -384,12 +462,21 @@ table(QC_Complete$segment)
 table(QC_Complete$segment[which(QC_Complete$RUN == 1)])
 table(QC_Complete$segment[which(QC_Complete$RUN == 2)])
 
-fwrite(QC_Complete, paste0(datadir, 'QC_All_inc_GeneDetection.txt'), quote = F, row.names = F, sep = '\t')
+QC_Complete = merge(QC_Complete, new_sData_df[,c('SampleID', 'QCStatus')], by = 'SampleID')
+kable(table(QC_Complete$`slide name`[which(QC_Complete$GeneDetectionFail != "TRUE")]))
 
-#---
+getwd()
+fwrite(QC_Complete, paste0(datadir, 'QC_PASS_inc_GeneDetection.txt'), quote = F, row.names = F, sep = '\t')
+
+dim(QC_Complete)
+kable(table(QC_Complete$`slide name`[which(QC_Complete$GeneDetectionFail != "TRUE" & QC_Complete$NTC < 8000)]))
+
+#--- keep QC passed segments
 #rm(list = c('Data_backup', 'Data', 'QCResults_backup', 'QCResults'))
-
+# target_Data
+# target_Data = target_Data[which(QC_Complete$GeneDetectionFail != "TRUE" & QC_Complete$QCStatus == "PASS")]
 #---
+
 #============================================ Gene Detection Rate
 library(scales) # for percent
 
@@ -409,14 +496,17 @@ goi_df <- data.frame(
   DetectionRate = percent(fData(target_Data)[goi, "DetectionRate"]))
 goi_df
 
-#============================================ Gene Filtering
+#============================================ Gene Filtering [filters out genes]
 # We will graph the total number of genes detected in different percentages of segments. Based on the visualization below, we can better understand global gene detection in our study and select how many low detected genes to filter out of the dataset. Gene filtering increases performance of downstream statistical tests and improves interpretation of true biological signal.
 # Plot detection rate:
 plot_detect <- data.frame(Freq = c(1, 5, 10, 20, 30, 50))
+
 plot_detect$Number <-
   unlist(lapply(c(0.01, 0.05, 0.1, 0.2, 0.3, 0.5),
                 function(x) {sum(fData(target_Data)$DetectionRate >= x)}))
+
 plot_detect$Rate <- plot_detect$Number / nrow(fData(target_Data))
+
 rownames(plot_detect) <- plot_detect$Freq
 
 ggplot(plot_detect, aes(x = as.factor(Freq), y = Rate, fill = Rate)) +
@@ -544,7 +634,7 @@ toMatch <- gsub('.dcc','',row.names(pData(target_Data))[which(pData(target_Data)
 table(pData(target_Data)$DetectionThreshold %in% c('<1%', '1-5%')) # , '1-5%'
 kable(table(Batch = SamplesMetadata$batch[which(SamplesMetadata$Sample_ID %in% toMatch )]))
 
-#============================================ filter Segments based on gene detection rate
+#============================================ filter Segments based on gene detection rate [total number of genes is around 12k]
 target_Data <-
   target_Data[, -which(pData(target_Data)$DetectionThreshold %in% c('<1%', '1-5%'))]
 dim(target_Data)
@@ -561,14 +651,17 @@ colwise(sum)(d.tst)
 
 d <- data.frame(exprs(target_Data));
 d.tst <- ifelse(d == 1, 1, 0) %>% as.data.frame
+
 library(plyr)
 colwise(sum)(d.tst)
 
 pData(target_Data)$GenesDetected <- as.numeric(colwise(sum)(d.tst))
+
 pData(target_Data)$GeneDetectionRate <-
   pData(target_Data)$GenesDetected / nrow(target_Data)
 
 dim(target_Data)
+
 table(pData(target_Data)$segment)
 
 table(QC_Complete$segment)
@@ -584,6 +677,7 @@ table(df_pData$segment)
 table(df_pData$segment[which(df_pData$Run == 1)])
 
 dim(pData(target_Data))
+
 sData_df <- sData(target_Data)[, dimnames(sData(target_Data))[[2]]]
 dim(sData_df)
 
@@ -694,6 +788,7 @@ which(names(colData(spe)) == 'segment')
 
 MD = data.frame((colData(spe)))
 fwrite(MD, paste0(datadir, 'MetaData.txt'), quote = F, row.names = F, sep = '\t')
+dim(MD)
 
 metadata(spe)$NegProbes = negativeGeoMeans
 
@@ -721,12 +816,15 @@ library(ggalluvial)
 # A higher sample_fraction retains more information but may be more sensitive to outliers.
 
 spe2_subset <- addPerROIQC(spe, rm_genes = TRUE, min_count = 3, sample_fraction = 0.95)
+dim(spe2_subset)
 metadata(spe2_subset) |> names()
 
 # table(pData(target_Data)$segment)[1]/sum(table(pData(target_Data)$segment))
 
 colData(spe2_subset)$Names = gsub('.dcc','', row.names(colData(spe2_subset)))
-#plotGeneQC(spe2_subset, ordannots = "Names", col = Names, point_size = 2)
+plotGeneQC(spe2_subset, ordannots = "Names", col = Names, point_size = 2)
+
+# ref: https://davislaboratory.github.io/GeoMXAnalysisWorkflow/articles/GeoMXAnalysisWorkflow.html
 
 library(stringr)
 string = str_split_fixed(gsub('.dcc','',colData(spe2_subset)$Names), "-", 4)
@@ -749,8 +847,7 @@ colData(spe2_subset)$state = factor(colData(spe2_subset)$state, levels =  c("PD-
 # 
 # standR::plotMDS(spe2_subset, assay = 2, color = segment)
 
-#============================================ Normalization
-
+#============================================ check integrity of metadata
 # View(as.data.frame(colData(spe_ruv)))
 # colData(spe_ruv)$slide.name
 # colData(spe_ruv)$scan.name
@@ -761,9 +858,34 @@ table(colData(spe2_subset)$segment)
 # control    PD-with-LB PD-without-LB 
 # 235           119           166 
 
+samples = unique(gsub(' Run.*|_Run.*| Control.*|_.*','', colData(spe2_subset)$`slide name`))
+samples = unique(gsub('PD ', 'PD', samples))
+length(samples)
+
+length(unique(colData(spe2_subset)$`slide name`))
+length(unique(gsub(' Run.*|_Run.*| Control.*|_.*','', colData(spe2_subset)$`slide name`)))
+
+length(unique(gsub(' Run.*|_Run.*| Control.*|_.*','', SamplesMetadata$`slide name`)))
+setdiff(unique(gsub(' Run.*|_Run.*| Control.*|_.*','', SamplesMetadata$`slide name`)), samples)
+
+SamplesMetadata = read_excel(paste0(datadir, 'annotation/Annotation_File.xlsx'))
+dim(SamplesMetadata)
+
+table(SamplesMetadata$`slide name` == SamplesMetadata$`scan name`)
+
+table(SamplesMetadata$segment[grep('wo', SamplesMetadata$roi)])
+table(SamplesMetadata$segment[grep('w LB', SamplesMetadata$roi)])
+
+length(unique(gsub(' Run.*|_Run.*| Control.*|_.*','', SamplesMetadata$`slide name`)))
+
+
+
+#============================================ Normalization
+
 #------------------ I should select the Run ------------------
 Run = 'Run 1'
 spe2_subset <- spe2_subset[, grep(Run, colData(spe2_subset)$`scan name`)]
+dim(spe2_subset)
 
 #============================================ I keep all genes
 
@@ -785,6 +907,10 @@ table(colData(spe2_subset)$segment)
 # control    PD-with-LB PD-without-LB 
 # 123            67            80 
 
+samples = unique(gsub(' Run.*|_Run.*| Control.*|_.*','', colData(spe2_subset)$`slide name`))
+samples = unique(gsub('PD ', 'PD', samples))
+length(samples)
+
 SamplesMetadata = read_excel(paste0(datadir, 'annotation/Annotation_File.xlsx'))
 dim(SamplesMetadata)
 SamplesMetadata$Run = gsub('.*Run ', '', SamplesMetadata$`scan name`)
@@ -797,10 +923,11 @@ table(SamplesMetadata$segment)
 table(SamplesMetadata$segment[which(SamplesMetadata$segment == "PD-with-LB")])
 table(SamplesMetadata$segment[which(SamplesMetadata$Run == "1")])
 table(SamplesMetadata$segment[which(SamplesMetadata$Run == "2")])
-#--------------------------------------
 
+#--------------------------------------
 spe2_subset@assays
 spe2_subset@assays@data@listData$logcounts = NULL
+
 spe_tmm1 <- geomxNorm(spe2_subset, method = "TMM")
 # I test to be sure that I save TMM in logcounts
 spe_tmm1@assays # logcounts [assay = 2] contain the TMM
@@ -808,6 +935,7 @@ spe_tmm1@assays # logcounts [assay = 2] contain the TMM
 #============================================ Import from DGEList object [this is essential for running drawPCA]
 # Alternatively, standR provides a function to generate a spatial experiment object from a DGEList object, which would be useful for users who used edgeR package and have existing analyses and implementations using DGEList objects to port across to the standR workflow.
 dge <- edgeR::SE2DGEList(spe2_subset)
+
 spe_tmm <- readGeoMxFromDGE(dge)
 spe_tmm
 
@@ -826,6 +954,11 @@ drawPCA(spe_tmm, assay = 2, color = segment)
 S3Metadata = read_excel('/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3/annotation/Annotation_File.xlsx')
 dim(S3Metadata)
 
+#--- grep multiple pattern [removed accoroding heatmap]
+# toMatch <- c("PD1121", "PD1141", "PD1151")
+# # OR
+# matches <- unique(grep(paste(toMatch,collapse="|"), S3Metadata$`slide name`, value=TRUE))
+
 S4Metadata = read_excel('/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S4/annotation/Annotation_File.xlsx')
 dim(S4Metadata)
 
@@ -836,6 +969,32 @@ colData(spe_tmm)$batch[which(row.names(colData(spe_tmm)) %in% S3Metadata$Sample_
 colData(spe_tmm)$batch[which(row.names(colData(spe_tmm)) %in% S4Metadata$Sample_ID)] = 'S4'
 
 table(colData(spe_tmm)$batch)
+
+#================================================== combined batch
+slide_dateMetadata = read_excel('/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3_S4_limma_20k//annotation2//Metatdata_S3S4_with_slide_date.xlsx')
+dim(slide_dateMetadata)
+
+slide_dateMetadata = as.data.frame(slide_dateMetadata)
+slide_dateMetadata = slide_dateMetadata[which(slide_dateMetadata$Sample_ID %in% row.names(colData(spe_tmm))),]
+dim(slide_dateMetadata)
+length(row.names(colData(spe_tmm)))
+
+slide_dateMetadata = slide_dateMetadata[match(row.names(colData(spe_tmm)),slide_dateMetadata$Sample_ID),]
+identical(row.names(colData(spe_tmm)),slide_dateMetadata$Sample_ID)
+
+table(slide_dateMetadata$Batch_slides)
+colData(spe_tmm)$batchslide = slide_dateMetadata$Batch_slides
+table(colData(spe_tmm)$batchslide)
+
+colData(spe_tmm)$batch_combined = paste0(colData(spe_tmm)$batch, '_', colData(spe_tmm)$batchslide)
+
+library(openxlsx)
+write.xlsx(as.data.frame(colData(spe_tmm)), '/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3_S4_limma_20k/annotation2/Metatdata_S3S4_with_batch_combined.xlsx')
+
+
+#==================================================
+
+# Always combine your relevant batch columns into a single CombinedBatch factor before running findNCGs. This provides the most comprehensive and accurate definition of what constitutes a "batch" for the purpose of identifying negative control genes, which are crucial for subsequent normalization and batch correction steps in standR.
 
 spe_tmm <- findNCGs(spe_tmm, batch_name = "batch", top_n = 1000)
 # findNCGs: This function aims to identify network community genes (NCGs), which are genes that are highly influential within their respective network communities.
@@ -864,15 +1023,91 @@ fwrite(count_mat, paste0(datadir, 'GeoMx_readCount_TMMRUV_R1.txt'), quote = F, r
 format(object.size(spe2_subset), units = "Mb")
 #rm(list = c('spe_tmm', 'spe2_subset'))
 
+#============================================ compare different types of normalization
+# library(edgeR)
+# library(limma)
+# 
+# dge <- SE2DGEList(spe_ruv)
+# design <- model.matrix(~0 + segment + ruv_W1 + ruv_W2, data = colData(spe_ruv)) # Adding ruv_W1 + ruv_W2 reduces the number of DEGs by up to 3.
+# colnames(design)
+# 
+# v <- list()
+# # 1. Normalizing only to library size:
+# v$libsize <- voom(dge, design)
+# # 2. TMM normalization:
+# dge <- calcNormFactors(dge)
+# v$tmm <- voom(dge, design)
+# # 3. Cyclic loess normalization:
+# v$cycloess <- voom(dge, design, normalize="cyclicloess")
+# # 4. Quantile normalization:
+# v$quantile <- voom(dge, design, normalize="quantile")
+# 
+# names(spe_ruv@assays)
+# spe_ruv@assays@data@listData$LimmaTMM = v$tmm$E
+# spe_ruv@assays@data@listData$Limmacyclicloess = v$cycloess$E
+# spe_ruv@assays@data@listData$LimmaQuantile = v$quantile$E
+# spe_ruv@assays@data@listData$libsize = v$libsize$E
+
+# print(plotPairPCA(spe_ruv, assay = 2, n_dimension = 4, color = segment, title = "TMM + RUV4"))
+# print(plotPairPCA(spe_ruv, assay = 3, n_dimension = 4, color = segment, title = "Limma TMM"))
+# print(plotPairPCA(spe_ruv, assay = 4, n_dimension = 4, color = segment, title = "Cyclic Loess"))
+# print(plotPairPCA(spe_ruv, assay = 5, n_dimension = 4, color = segment, title = "Quantile"))
+# print(plotPairPCA(spe_ruv, assay = 6, n_dimension = 4, color = segment, title = "Library size"))
+# 
+# plotRLExpr(spe_ruv, assay = 2, color = segment) + ggtitle("TMM + RUV4")
+# plotRLExpr(spe_ruv, assay = 3, color = segment) + ggtitle("Limma TMM")
+# plotRLExpr(spe_ruv, assay = 4, color = segment) + ggtitle("Cyclic Loess")
+# plotRLExpr(spe_ruv, assay = 5, color = segment) + ggtitle("Quantile")
+# plotRLExpr(spe_ruv, assay = 6, color = segment) + ggtitle("Library size")
+
+## -----------------------------------------------------------------------------
+
+# names = data.frame(names1 = names(spe_ruv@assays),
+#                    names2 = c('Counts','TMM + RUV4','Limma TMM','Cyclic Loess','Quantile','Library size'))
+# 
+# i=1
+# for(i in 1:length(names(spe_ruv@assays)) )
+# {
+#   name = names(spe_ruv@assays)[i]
+#   print(names$names2[names$names1 == name])
+#   setwd(datadir)
+#   
+#   pdf(paste0(name, "_", Run, "_plotPairPCA.pdf"), width = 10, height = 10)
+#   
+#   library(factoextra)
+#   library(tidyverse)
+#   identical(colnames(spe_ruv@assays@data@listData$logcounts), row.names(colData(spe_ruv)))
+#   res.pca <- prcomp(t(spe_ruv@assays@data@listData[[name]]),  scale = TRUE)
+#   p = fviz_pca_biplot(res.pca,
+#                       select.var = list(cos2 = 5),
+#                       # Individuals
+#                       geom.ind = "point",
+#                       fill.ind = colData(spe_ruv)$segment, col.ind = "black",
+#                       pointshape = 21, pointsize = 4,
+#                       palette = "jco",
+#                       addEllipses = TRUE,
+#                       # Variables
+#                       alpha.var ="contrib", col.var = "contrib",
+#                       gradient.cols = "RdYlBu",
+#                       legend.title = list(fill = "Species", color = "Contrib",
+#                                           alpha = "Contrib")
+#   ) + ggtitle(names$names2[names$names1 == name]) + coord_fixed() + theme(axis.text=element_text(size=25), axis.title=element_text(size=25, face="bold"), legend.text=element_text(size=20), legend.title=element_text(size=20), plot.title = element_text(size = 30, face="bold"))
+#   
+#   print(p)
+#   dev.off()
+# }
+
 #============================================ UMAP  
 
 library(ggspavis)
+library(Seurat)
 ## Set seed
 set.seed(987)
 
 ## Compute UMAP on top 50 PCs
 spe_ruv <- scater::runPCA(spe_ruv)
-spe_ruv <- runUMAP(spe_ruv, dimred = "PCA")
+spe_ruv <- scater::runUMAP(spe_ruv, dimred = "PCA")
+
 reducedDimNames(spe_ruv)
 dim(reducedDim(spe_ruv, "UMAP"))
 
@@ -904,11 +1139,45 @@ UMAP = ggplot(data = as.data.frame(spe_ruv@int_colData@listData$reducedDims$UMAP
        y = "UMAP2",
        colour = "Layers") +
   theme_classic()
-
+UMAP
 getwd()
 pdf(paste0(gsub(' ','',Run), "_TMM_RUV_UMAP.pdf"), width = 8, height = 8)
 UMAP
 dev.off()
+
+#---- visualization of expression level per gene
+
+# meta.data = data.frame(slide.name = colData(spe_ruv)$slide.name, state = colData(spe_ruv)$state)
+# row.names(meta.data) = row.names(colData(spe_ruv))
+# 
+# meta.data$slide.name[which(meta.data$state == 'PD-with-LB')] = paste0('V', meta.data$slide.name[which(meta.data$state == 'PD-with-LB')])
+# meta.data$slide.name[which(meta.data$state == 'PD-without-LB')] = paste0('R', meta.data$slide.name[which(meta.data$state == 'PD-without-LB')])
+# 
+# library(Seurat)
+# target_Data_Seurat <- CreateSeuratObject(counts = logcounts(spe_ruv), project = "Seurat",  meta.data = meta.data, assay = "GeoMx")
+# 
+# library(scater)
+# sce <- as.SingleCellExperiment(target_Data_Seurat)
+# # assay(sce) # uses the normalized values
+# 
+# query = 'KCNJ6'
+# query = 'CALB1'
+# query = "SNCA"
+# # ENO1
+# 
+# library(dittoSeq)
+# dittoPlot(sce, query, group.by = "state")
+# 
+# dittoPlot(sce, query, group.by = "state",
+#           plots = c("vlnplot", "jitter", "boxplot"),
+#           # change the color and size of jitter points
+#           jitter.color = "blue", jitter.size = 0.7,
+#           # change the outline color and width, and remove the fill of boxplots
+#           boxplot.color = "white", boxplot.width = 0.1,
+#           boxplot.fill = FALSE,
+#           # change how the violinplot widths are normalized across groups
+#           vlnplot.scaling = "count"
+# )
 
 #============================================ UMAP _ tSNE [does not use TMM + RUV4]
 # library(umap)
@@ -945,132 +1214,850 @@ dev.off()
 #   geom_point(size = 3) +
 #   theme_bw()
 
+
+#============================================ celltype deconvolution
+
+datadir <- file.path("/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3_S4_limma_20k/")
+setwd(datadir)
+
+#---------- countFile
+library(data.table)
+count_matrix = fread(paste0(datadir, 'GeoMx_readCount_TMMRUV_R1.txt'), stringsAsFactors = F, header = T)
+count_matrix = as.data.frame(count_matrix)
+colnames(count_matrix)[colnames(count_matrix) == 'GeneSymbol'] = 'TargetName'
+
+#- add negativeProbef
+negativeProbefData <- subset(fData(target_Data), CodeClass == "Negative")
+neg_probes <- unique(negativeProbefData$TargetName)
+
+count_neg_probes = data.frame(assayData(target_Data)$exprs[grep(neg_probes, row.names(assayData(target_Data)$exprs)),])
+count_neg_probes = t(count_neg_probes)
+colnames(count_neg_probes) = gsub('.dcc','',colnames(count_neg_probes))
+colnames(count_neg_probes) = gsub('-','.',colnames(count_neg_probes))
+count_neg_probes = cbind(TargetName = neg_probes, count_neg_probes)
+row.names(count_neg_probes) = NULL
+count_neg_probes = count_neg_probes[,which(colnames(count_neg_probes) %in% colnames(count_matrix))]
+length(count_neg_probes)
+dim(count_matrix)
+
+count_neg_probes = count_neg_probes[match(colnames(count_matrix), names(count_neg_probes))]
+identical(names(count_neg_probes), colnames(count_matrix))
+
+# add Negative probes to the count matrix
+count_matrix = rbind(count_neg_probes, count_matrix)
+count_matrix[,-1] <- as.data.frame(sapply(count_matrix[,-1], as.numeric)) #<- sapply is here
+
+#---------- featureAnnoFile
+featureAnnotationFile = data.frame(TargetName = count_matrix$TargetName)
+
+#---------- sampleAnnoFile
+sampleAnnotationFile = fread(paste0(datadir, 'QC_All.txt'), stringsAsFactors = F, header = T)
+sampleAnnotationFile = as.data.frame(sampleAnnotationFile)
+# "slide name" "SlideName"
+# "scan name"  "ScanLabel"
+# "segment" "SegmentLabel"
+# "SampleID" "SegmentDisplayName"
+# "segment" "Type"
+
+sampleAnnotationFile$SlideName = sampleAnnotationFile$`slide name`
+sampleAnnotationFile$ScanLabel = sampleAnnotationFile$`scan name`
+sampleAnnotationFile$ROILabel = sampleAnnotationFile$Well
+sampleAnnotationFile$SegmentLabel = sampleAnnotationFile$segment
+sampleAnnotationFile$RawReads = sampleAnnotationFile$Raw
+sampleAnnotationFile$Type = sampleAnnotationFile$segment
+sampleAnnotationFile$SegmentDisplayName = gsub('-','.', sampleAnnotationFile$SampleID)
+sampleAnnotationFile$ROICoordinateX = 1:dim(sampleAnnotationFile)[1]
+sampleAnnotationFile$ROICoordinateY = 1:dim(sampleAnnotationFile)[1]
+
+# sampleAnnotationFile = sampleAnnotationFile[grep('Run 1', sampleAnnotationFile$`slide name`),]
+# count_matrix = count_matrix[,which(gsub('\\.', '-', colnames(count_matrix)) %in% sampleAnnotationFile$SampleID)]
+# dim(count_matrix)
+# sampleAnnotationFile = sampleAnnotationFile[which(sampleAnnotationFile$SampleID %in% gsub('\\.', '-', colnames(count_matrix))),]
+# dim(sampleAnnotationFile)
+
+#-------------------------
+library(SpatialDecon)
+library(standR)
+spe2 <- readGeoMx(count_matrix, sampleAnnotationFile, featureAnnotationFile, rmNegProbe = FALSE, NegProbeName = "NegProbe-WTX",
+                  colnames.as.rownames = c("TargetName", "SegmentDisplayName", "TargetName"),
+                  coord.colnames = c("ROICoordinateX", "ROICoordinateY"))
+
+spd <- prepareSpatialDecon(spe2)
+names(spd)
+
+#------------------------- scRANseq Cell-Types -------------------------
+
+PI='GSE243639'
+library(data.table)
+#--- MetaData
+MetaData = fread('/Users/isarnassiri/Documents/Parkinson/Data/GSE243639_RAW/GSE243639_Clinical_data.csv')
+MetaData = as.data.frame(MetaData)
+table(MetaData$`Clinical diagnosis`)
+#MetaData = MetaData[which(MetaData$`Clinical diagnosis` != "Parkinson's"),]
+length(MetaData$`Sample ID`)
+
+#--- CellType Annotations
+CellTypeEnrichment = fread('/Users/isarnassiri/Documents/Parkinson/Data/GSE243639_RAW/AllCells_Annotation.txt')
+CellTypeEnrichment = as.data.frame(CellTypeEnrichment)
+
+CellTypeEnrichment$Samples = gsub('_.*', '', CellTypeEnrichment$CELL_ID)
+
+CellTypeEnrichment_subset = CellTypeEnrichment[which(CellTypeEnrichment$Samples %in% MetaData$`Sample ID`),]
+dim(CellTypeEnrichment)
+dim(CellTypeEnrichment_subset)
+
+CellTypeEnrichment_subset$CELL_ID = gsub('\\.', '-', CellTypeEnrichment_subset$CELL_ID)
+CellTypeEnrichment_subset = CellTypeEnrichment_subset[-which(CellTypeEnrichment_subset$IDENT %in% c("OPC", 'VC', 'T cells')),]
+
+CellTypeEnrichment_subset = CellTypeEnrichment_subset[!is.na(CellTypeEnrichment_subset$CELL_ID),]
+dim(CellTypeEnrichment_subset)
+
+#--- Read Count
+TP_profile = fread('/Users/isarnassiri/Documents/Parkinson/Data/GSE243639_RAW/GSE243639_Filtered_count_table.csv')
+TP_profile = as.data.frame(TP_profile)
+dim(TP_profile)
+row.names(TP_profile) = TP_profile$V1
+TP_profile = TP_profile[,-1]
+colnames(TP_profile) = gsub('\\.', '-', colnames(TP_profile))
+
+#------
+files = list.files('/Users/isarnassiri/Documents/GeoMx_Analysis/Analysis', pattern = 'sc_brain_region_')
+setwd('/Users/isarnassiri/Documents/GeoMx_Analysis/Analysis')
+
+require(data.table) ## 1.9.2 or 1.9.3
+genesets = rbindlist(lapply(files, fread), idcol="ID")
+
+genesets$ID = gsub('.*rna_|.tsv', '', files)[genesets$ID]
+table(genesets$ID)
+table(duplicated(genesets$Gene))
+
+TP_profile_subsetCellType = TP_profile[which(row.names(TP_profile) %in% genesets$Gene),]
+dim(TP_profile_subsetCellType)
+
+TP_profile_subsetCellType = TP_profile_subsetCellType[, which(colnames(TP_profile_subsetCellType) %in% CellTypeEnrichment_subset$CELL_ID),]
+dim(TP_profile_subsetCellType)
+
+TP_profile_subsetCellType = TP_profile_subsetCellType[apply(TP_profile_subsetCellType, 1, function(x) !all(x==0)),]
+dim(TP_profile_subsetCellType)
+
+genesets = genesets[which(genesets$Gene %in% row.names(TP_profile_subsetCellType)),]
+
+kable(table(Cell_Type = genesets$ID[which(genesets$Gene %in% row.names(TP_profile_subsetCellType))]))
+#------
+
+CellTypeEnrichment_subset = CellTypeEnrichment_subset[match(colnames(TP_profile_subsetCellType), CellTypeEnrichment_subset$CELL_ID),]
+dim(CellTypeEnrichment_subset)
+identical(colnames(TP_profile_subsetCellType), CellTypeEnrichment_subset$CELL_ID)
+
+CellTypeEnrichment_subset$Type = rep(1, dim(CellTypeEnrichment_subset)[1])
+
+colnames(TP_profile_subsetCellType) = CellTypeEnrichment_subset$IDENT
+table(colnames(TP_profile_subsetCellType))
+class(TP_profile_subsetCellType)
+dim(TP_profile_subsetCellType)
+
+patterns <- names(table(colnames(TP_profile_subsetCellType)))
+scRNAseq <- sapply(patterns, function(xx) rowSums(TP_profile_subsetCellType[,grep(xx, names(TP_profile_subsetCellType)), drop=FALSE]))  # loop through
+
+heatmap(sweep(scRNAseq, 1, apply(scRNAseq, 1, max), "/"), labRow = NA, margins = c(10, 5))
+
+#---------- prune cells using Multiple pairwise-comparison [the proposed cell should be dominant one]
+
+genesets = genesets[match(row.names(scRNAseq),genesets$Gene),]
+identical(row.names(scRNAseq),genesets$Gene)
+
+scRNAseq = as.data.frame(scRNAseq)
+scRNAseq$sigDiff = scRNAseq$CellType = 1:length(scRNAseq$Astro)
+
+# Using options(scipen = ...)
+options(scipen = 999) # Prevent scientific notation
+
+for(it in 1:dim(scRNAseq)[1])
+{
+  print(it)
+  print(genesets$ID[it])
+  
+  if(genesets$ID[it] == "Microglia")
+  {
+    results = pairwise.wilcox.test(as.numeric(TP_profile_subsetCellType[it,]), factor(CellTypeEnrichment_subset$IDENT, levels = c("Micro", "Astro",  "Neurons", "Oligo")), p.adjust.method = "BH")
+  }
+  
+  if(genesets$ID[it] == "Astrocyte")
+  {
+    results = pairwise.wilcox.test(as.numeric(TP_profile_subsetCellType[it,]), factor(CellTypeEnrichment_subset$IDENT, levels = c("Astro", "Micro", "Neurons", "Oligo")), p.adjust.method = "BH")
+  }
+  
+  if(genesets$ID[it] == "Neurons")
+  {
+    results = pairwise.wilcox.test(as.numeric(TP_profile_subsetCellType[it,]), factor(CellTypeEnrichment_subset$IDENT, levels = c("Neurons", "Micro", "Astro",  "Oligo")), p.adjust.method = "BH")
+  }
+  
+  if(genesets$ID[it] == "Oligodendrocyte")
+  {
+    results = pairwise.wilcox.test(as.numeric(TP_profile_subsetCellType[it,]), factor(CellTypeEnrichment_subset$IDENT, levels = c("Oligo", "Micro", "Astro",  "Neurons")), p.adjust.method = "BH")
+  }
+  
+  print(results$p.value[,1])
+  scRNAseq$sigDiff[it] = all(results$p.value[,1] < 0.001) # TRUE is 1
+  scRNAseq$CellType[it] = genesets$ID[it]
+ 
+}
+
+options(scipen = 0) # Reset to default
+
+#--- Select genes whose expression is compatible with the proposed marker gene per cell type.
+#-- select cell type with max expression
+scRNAseq$max <- apply(scRNAseq[,c(1:4)], 1, function(x) colnames(scRNAseq[,c(1:4)])[which.max(x)])
+scRNAseq$GeneNames <- row.names(scRNAseq)
+
+#-- rename
+df = data.frame(max = c('Astro', 'Micro', 'Neurons', 'Oligo'), CellType = c('Astrocyte', 'Microglia', 'Neurons', 'Oligodendrocyte'))
+scRNAseq = merge(scRNAseq, df, by = 'max')
+
+#-- subset [keep marker genes that annotation and dominant cell type are consistence]
+scRNAseq_subset = scRNAseq[which(scRNAseq$CellType.x == scRNAseq$CellType.y & scRNAseq$sigDiff == 1),]
+kable(table(scRNAseq$CellType.x))
+kable(table(scRNAseq_subset$CellType.x))
+
+scRNAseq_subset = scRNAseq_subset[,-which(colnames(scRNAseq_subset) %in% c("max", "CellType.y"))]
+
+colnames(scRNAseq_subset)[which(colnames(scRNAseq_subset) == "CellType.x")] = "CellType"
+colnames(scRNAseq_subset)
+
+table(scRNAseq$sigDiff)
+kable(table(scRNAseq$max))
+
+# scRNAseqsubset = scRNAseq[apply(scRNAseq[,c(1:4)], 1, function(x) (sum(x)>50)),]
+# scRNAseqsubset = scRNAseqsubset[which(scRNAseqsubset$sigDiff == 1),]
+# dim(scRNAseqsubset)
+kable(table(scRNAseq_subset$CellType))
+
+#----------
+
+patterns <- names(table(colnames(TP_profile_subsetCellType)))
+scRNAseq2 <- sapply(patterns, function(xx) rowSums(TP_profile_subsetCellType[,grep(xx, names(TP_profile_subsetCellType)), drop=FALSE]))  # loop through
+
+scRNAseq2 = scRNAseq2[which(row.names(scRNAseq2) %in% scRNAseq_subset$GeneNames), ]
+dim(scRNAseq2)
+
+scRNAseq2 = scRNAseq2[apply(scRNAseq2[,c(1:4)], 1, function(x) (sum(x)>100)),]
+
+kable(table(Cell_Type = genesets$ID[which(genesets$Gene %in% row.names(scRNAseq2))]))
+
+colnames(scRNAseq2) = df$CellType[match(colnames(scRNAseq2), df$max)]
+
+heatmap(sweep(scRNAseq2, 1, apply(scRNAseq2, 1, max), "/"), labRow = NA, margins = c(12, 5))
+#dev.off()
+
+#------------------------- 
+res <- spatialdecon(norm = spd$normCount,
+                    bg = spd$backGround,
+                    X = scRNAseq2,
+                    align_genes = TRUE)
+
+# If I proceed with a min value higher than 5 in the function addPerROIQC (820), this function does not work and I get the following error message.
+# Only 60 genes are shared between norm and X, which may not be enough to support accurate deconvolution.
+
+#-------------------------
+str(res$beta)
+colnames(res$prop_of_all)
+subset_prop <- res$prop_of_all
+
+colnames(colData(spe_ruv))
+
+#------ input for visualziation
+sampleAnnotationFile_Run1 = sampleAnnotationFile[which(sampleAnnotationFile$SampleID %in% colData(spe_ruv)$SampleID ),]
+dim(sampleAnnotationFile_Run1)
+
+subset_prop_Run1 = subset_prop[,which(gsub('\\.','-',colnames(subset_prop)) %in% sampleAnnotationFile_Run1$SampleID)]
+
+row.names(subset_prop_Run1)
+class(subset_prop_Run1)
+subset_prop_Run1 = subset_prop_Run1[,order(as.numeric(subset_prop_Run1[which(row.names(subset_prop_Run1) == "Neurons"),]), decreasing = T)]
+subset_prop_Run1 = subset_prop_Run1[,!is.na(subset_prop_Run1[3,])]
+
+sampleAnnotationFile_Run1 = sampleAnnotationFile_Run1[which( sampleAnnotationFile_Run1$SampleID %in%  gsub('\\.','-',colnames(subset_prop_Run1)) ),]
+dim(subset_prop_Run1)
+dim(sampleAnnotationFile_Run1)
+
+length(setdiff(gsub('\\.','-',colnames(subset_prop_Run1)), sampleAnnotationFile_Run1$SampleID))
+
+sampleAnnotationFile_Run1 = sampleAnnotationFile_Run1[match(gsub('\\.','-',colnames(subset_prop_Run1)), sampleAnnotationFile_Run1$SampleID),]
+identical(gsub('\\.','-',colnames(subset_prop_Run1)), sampleAnnotationFile_Run1$SampleID)
+
+colnames(subset_prop_Run1) = make.names(sampleAnnotationFile_Run1$segment, unique = T)
+subset_prop_Run1 = as.data.frame(subset_prop_Run1)
+
+cbind(subset_prop_Run1[,1:10], subset_prop_Run1[,(dim(subset_prop_Run1)[2]-10):(dim(subset_prop_Run1)[2])]) %>%
+  as.data.frame() %>%
+  rownames_to_column("CellTypes") %>%
+  gather(samples, prop, -CellTypes) %>%
+  ggplot(aes(samples, prop, fill = CellTypes)) +
+  geom_bar(stat = "identity", position = "stack", color = "black", width = .7) +
+  coord_flip() +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+subset_prop_Run1 %>%
+  as.data.frame() %>%
+  rownames_to_column("CellTypes") %>%
+  gather(samples, prop, -CellTypes) %>%
+  ggplot(aes(samples, prop, fill = CellTypes)) +
+  geom_bar(stat = "identity", position = "stack", color = "black", width = .7) +
+  coord_flip() +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+
+library(dplyr)
+summary_input = t(subset_prop_Run1)
+summary_input = as.data.frame(summary_input)
+summary_input$Type = sampleAnnotationFile_Run1$segment
+
+dim(summary_input)
+
+summary_result = summary_input %>%
+  group_by(Type) %>%
+  summarise_all(list(median))
+
+#--- table of cell types
+library(pander)
+panderOptions('digits', 3)
+pander(summary_result)
+
 #============================================ Differential expression analysis ============================================
 
-#--- summary of segments used for DEGs analysis
-library(edgeR)
-library(limma)
+#--- add celltype proportions as covariance
+subset_prop_perRun = subset_prop[,which(gsub('\\.','-', colnames(subset_prop)) %in% colData(spe_ruv)$SampleID)]
+subset_prop_perRun = t(subset_prop_perRun)
+subset_prop_perRun = as.data.frame(subset_prop_perRun)
+row.names(subset_prop_perRun) = gsub('\\.', '-', row.names(subset_prop_perRun))
 
-dge <- SE2DGEList(spe_ruv)
+identical(row.names(subset_prop_perRun), colData(spe_ruv)$SampleID)
 
-design <- model.matrix(~0 + segment + ruv_W1 + ruv_W2 , data = colData(spe_ruv))
-colnames(design)
+class(subset_prop_perRun)
+colnames((subset_prop_perRun))
 
-colnames(design) <- gsub("^segment","", colnames(design))
-gsub("\\+","",colnames(design)) 
-colnames(design) <- gsub("\\+","",colnames(design)) # Double check this part
-colnames(design) = c("control", "PDwLBP", "PDwoLBP",  "ruv_W1",   "ruv_W2")
+table(is.na(subset_prop_perRun$Astro))
 
-#------------------ select a reference ------------------
+subset_prop_perRun$Astr0o[is.na(subset_prop_perRun$Astro)] = 0
+subset_prop_perRun$Micro[is.na(subset_prop_perRun$Micro)] = 0
+subset_prop_perRun$Oligo[is.na(subset_prop_perRun$Oligo)] = 0
 
-# LB509TH - TH (TH is reference)
-# contr.matrix <- makeContrasts(BvT = PDwLBP - PDwoLBP, levels = colnames(design))
+View(as.data.frame(colData(spe_ruv)))
+colData(spe_ruv)$Astro = subset_prop_perRun$Astro
+colData(spe_ruv)$Micro = subset_prop_perRun$Micro
+colData(spe_ruv)$Oligo = subset_prop_perRun$Oligo
 
-states = c("PDwLBP - control", "PDwoLBP - control", "PDwLBP - PDwoLBP")
-state = "PDwLBP - PDwoLBP"
+colData(spe_ruv)$Donors = gsub(' .*|\\/', '', colData(spe_ruv)$slide.name)
+colData(spe_ruv)$Donors[-grep('PD', colData(spe_ruv)$Donors)] = paste0('C', colData(spe_ruv)$Donors[-grep('PD', colData(spe_ruv)$Donors)])
 
-for(state in states)
+length(unique(colData(spe_ruv)$Donors))
+
+#============================================ PCA
+
+setwd(datadir)
+
+library(factoextra)
+library(tidyverse)
+
+names(spe_ruv@assays@data@listData)
+
+identical(colnames(spe_ruv@assays@data@listData$logcounts), row.names(colData(spe_ruv)))
+
+res.pca <- prcomp(t(spe_ruv@assays@data@listData[["logcounts"]]), scale = TRUE)
+
+p = fviz_pca_biplot(res.pca,
+                    axes = c(1, 2),
+                    # this stands for PC1 vs PC2
+                    select.var = list(cos2 = 5),
+                    # Individuals
+                    geom.ind = "point",
+                    labelsize = 6,
+                    fill.ind = colData(spe_ruv)$segment, col.ind = "black",
+                    pointshape = 21, pointsize = 4,
+                    palette = "jco",
+                    addEllipses = TRUE,
+                    # Variables
+                    alpha.var ="contrib", col.var = "contrib",
+                    gradient.cols = "RdYlBu",
+                    legend.title = list(fill = "Neurons", color = "Contrib",
+                                        alpha = "Contrib")
+) + ggtitle('TMM + RUV4') + coord_fixed() + theme(axis.text=element_text(size=25), axis.title=element_text(size=25, face="bold"), legend.text=element_text(size=20), legend.title=element_text(size=20), plot.title = element_text(size = 30, face="bold"))
+
+print(p)
+
+getwd()
+
+pdf(paste0("plotPairPCA_before_regressout.pdf"), width = 12, height = 14)
+print(p)
+dev.off()
+
+
+#========= regress out
+
+Expression = spe_ruv@assays@data@listData[["logcounts"]]
+class(Expression)
+dim(Expression)
+
+CellTypeProportions = as.data.frame(res$prop_of_all[-which(row.names(res$prop_of_all) == 'Neurons'),])
+dim(CellTypeProportions)
+
+# replace na with 0
+CellTypeProportions[1,][is.na(CellTypeProportions[1,])] = 0
+CellTypeProportions[2,][is.na(CellTypeProportions[2,])] = 0
+CellTypeProportions[3,][is.na(CellTypeProportions[3,])] = 0
+
+NeuronalCellType = colData(spe_ruv)$segment
+class(NeuronalCellType)
+
+colnames(CellTypeProportions) = gsub('\\.','-',colnames(CellTypeProportions))
+CellTypeProportions = CellTypeProportions[,match(colnames(Expression), colnames(CellTypeProportions))]
+identical(colnames(Expression), colnames(CellTypeProportions))
+dim(CellTypeProportions)
+
+message("Regress out cell types")
+
+length(NeuronalCellType)
+dim(t(as.matrix(CellTypeProportions)))
+dim((Expression))
+
+# NeuronalCellType_M = NeuronalCellType
+# NeuronalCellType_M[NeuronalCellType_M == "control"] = 1
+# NeuronalCellType_M[NeuronalCellType_M == "PD-with-LB"] = 2
+# NeuronalCellType_M[NeuronalCellType_M == "PD-without-LB"] = 3
+# NeuronalCellType_M = as.numeric(NeuronalCellType_M)
+
+
+#-- per gene I regress out the effect of Glial cells
+j=1
+for(j in 1:dim(Expression)[1])
 {
 
-contr.matrix <- makeContrasts(BvT = state, levels = colnames(design))
+  # row.names(Expression[j,])
+  # colnames(Expression)[1]
+  # as.numeric(Expression[j,1])
+  # NeuronalCellType[1]
+  # t(CellTypeProportions)[1,]
   
-query = gsub(' - .*','',state)
-control = gsub('.* - ','',state)
+  
+  pcFit <- lm(as.numeric(Expression[j,]) ~ NeuronalCellType + t(as.matrix(CellTypeProportions)) )
+  
+  summary(pcFit)
+  
+  test.cov = t(as.matrix(CellTypeProportions))
+  remodelled <- as.numeric(Expression[j,] - rowSums(sapply(1:3, function(i) pcFit$coefficients[i+3]*test.cov[,i])))
+  print(summary(remodelled))
+  
+  Expression[j,] = remodelled
+  print(j)
+}
 
-#============================================ Limma normalization
+dim(Expression)
+dim(t(spe_ruv@assays@data@listData[["logcounts"]]))
+    
+res.pca <- prcomp(t(Expression),  scale = TRUE)
 
-v <- list()
+p = fviz_pca_biplot(res.pca,
+                    select.var = list(cos2 = 5),
+                    # Individuals
+                    geom.ind = "point",
+                    labelsize = 6,
+                    fill.ind = colData(spe_ruv)$segment, col.ind = "black",
+                    pointshape = 21, pointsize = 4,
+                    palette = "jco",
+                    addEllipses = TRUE,
+                    # Variables
+                    alpha.var ="contrib", col.var = "contrib",
+                    gradient.cols = "RdYlBu",
+                    legend.title = list(fill = "Neurons", color = "Contrib",
+                                        alpha = "Contrib")
+) + ggtitle('TMM + RUV4') + coord_fixed() + theme(axis.text=element_text(size=25), axis.title=element_text(size=25, face="bold"), legend.text=element_text(size=20), legend.title=element_text(size=20), plot.title = element_text(size = 30, face="bold"))
+print(p)
 
-# 1. Normalizing only to library size:
-v$libsize <- voom(dge, design)
+pdf(paste0("plotPairPCA_after_regressout.pdf"), width = 12, height = 14)
+print(p)
+dev.off()
 
-# 2. TMM normalization:
-dge <- calcNormFactors(dge)
-v$tmm <- voom(dge, design)
+library(dplyr)
+library(ggforce)
+count_normalized_mat = data.frame(GeneSymbol = row.names(Expression), Expression)
+dim(count_normalized_mat)
 
-# 3. Cyclic loess normalization:
-v$cycloess <- voom(dge, design, normalize="cyclicloess")
+library(data.table)
+fwrite(count_normalized_mat, paste0(datadir, 'GeoMx_TMM_RUV4_CellTypeCorrection_readCount.txt'), quote = F, row.names = F, sep = '\t')
 
-# 4. Quantile normalization:
-v$quantile <- voom(dge, design, normalize="quantile")
 
-names(spe_ruv@assays)
-spe_ruv@assays@data@listData$LimmaTMM = v$tmm$E
-spe_ruv@assays@data@listData$Limmacyclicloess = v$cycloess$E
-spe_ruv@assays@data@listData$LimmaQuantile = v$quantile$E
-spe_ruv@assays@data@listData$libsize = v$libsize$E
+#================================================== further exploration of data before DEGA ==================================================
 
+# There is a striking pattern that calls for explanation. This horseshoe or arch structure in the points is often an indicator of a sequential latent ordering or gradient in the data (Diaconis, Goel, and Holmes 2008). 
+# Diaconis, Persi, Sharad Goel, and Susan Holmes. 2008. “Horseshoes in Multidimensional Scaling and Kernel Methods.” Annals of Applied Statistics 2: 777. 
+
+## ----------------------------------------------------------------------------- ranked PCA
+
+library("ade4")
+library("factoextra")
+library("sva")
+
+identical(row.names(colData(spe_ruv)), colnames(assay(spe_ruv, 'counts')))
+
+#--- ranked PCA for counts
+Input = assay(spe_ruv, 'counts')
+colnames(Input) = colData(spe_ruv)$Donors
+
+# Instead of using the continuous, somehow normalized data, we use a robust analysis replacing the values by their ranks. The lower values are considered ties encoded as a threshold chosen to reflect the number of expected taxa thought to be present:
+rankthreshPCA = function(x, threshold = 3000) {
+  ranksM = apply(x, 2, rank)
+  ranksM[ranksM < threshold] = threshold
+  ranksM = threshold - ranksM
+  dudi.pca(t(ranksM), scannf = FALSE, nf = 2)
+}
+
+pcaGeoMx = rankthreshPCA(Input)
+
+pdf(paste0("RankedPCAPlot_batch_counts.pdf"), width = 8, height = 6)
+
+fviz(pcaGeoMx, element = "ind", axes = c(1, 2), geom = c("point", "text"),
+     habillage = colData(spe_ruv)$batch, repel = TRUE, palette = "Dark2",
+     addEllipses = TRUE, ellipse.type = "convex", label = "none") + 
+  ggtitle("") + coord_fixed()
+
+dev.off()
+
+pdf(paste0("RankedPCAPlot_state_counts.pdf"), width = 8, height = 6)
+
+fviz(pcaGeoMx, element = "ind", axes = c(1, 2), geom = c("point", "text"),
+     habillage = colData(spe_ruv)$state, repel = TRUE, palette = "Dark2",
+     addEllipses = TRUE, ellipse.type = "convex", label = "none") + 
+  ggtitle("") + coord_fixed()
+
+dev.off()
+
+
+#--- ranked PCA for logcounts
+identical(row.names(colData(spe_ruv)), colnames(assay(spe_ruv, 'logcounts')))
+
+Input = assay(spe_ruv, 'logcounts')
+colnames(Input) = colData(spe_ruv)$Donors
+
+pcaGeoMx = rankthreshPCA(Input)
+
+pdf(paste0("RankedPCAPlot_batch_logcounts.pdf"), width = 8, height = 6)
+
+fviz(pcaGeoMx, element = "ind", axes = c(1, 2), geom = c("point", "text"),
+     habillage = colData(spe_ruv)$batch, repel = TRUE, palette = "Dark2",
+     addEllipses = TRUE, ellipse.type = "convex", label = "none") + 
+  ggtitle("") + coord_fixed()
+
+dev.off()
+
+pdf(paste0("RankedPCAPlot_state_logcounts.pdf"), width = 8, height = 6)
+
+fviz(pcaGeoMx, element = "ind", axes = c(1, 2), geom = c("point", "text"),
+     habillage = colData(spe_ruv)$state, repel = TRUE, palette = "Dark2",
+     addEllipses = TRUE, ellipse.type = "convex", label = "none") + 
+  ggtitle("") + coord_fixed()
+
+dev.off()
+
+#--- ranked PCA for log-counts + regress-out glial cells
+Input = Expression
+identical(row.names(colData(spe_ruv)), colnames(Input))
+colnames(Input) = colData(spe_ruv)$Donors
+
+pcaGeoMx = rankthreshPCA(Input)
+
+pdf(paste0("RankedPCAPlot_batch_logcounts_regress-out.pdf"), width = 8, height = 6)
+
+fviz(pcaGeoMx, element = "ind", axes = c(1, 2), geom = c("point", "text"),
+     habillage = colData(spe_ruv)$batch, repel = TRUE, palette = "Dark2",
+     addEllipses = TRUE, ellipse.type = "convex", label = "none") + 
+  ggtitle("") + coord_fixed()
+
+dev.off()
+
+pdf(paste0("RankedPCAPlot_state_logcounts_regress-out.pdf"), width = 8, height = 6)
+
+fviz(pcaGeoMx, element = "ind", axes = c(1, 2), geom = c("point", "text"),
+     habillage = colData(spe_ruv)$state, repel = TRUE, palette = "Dark2",
+     addEllipses = TRUE, ellipse.type = "convex", label = "none") + 
+  ggtitle("") + coord_fixed()
+
+dev.off()
+
+## --------- batch correction using ComBat; This is not effective  
+# model0 = model.matrix(~1, colData(spe_ruv)$batch)
 # 
-# print(plotPairPCA(spe_ruv, assay = 2, n_dimension = 4, color = segment, title = "TMM + RUV4"))
-# print(plotPairPCA(spe_ruv, assay = 3, n_dimension = 4, color = segment, title = "Limma TMM"))
-# print(plotPairPCA(spe_ruv, assay = 4, n_dimension = 4, color = segment, title = "Cyclic Loess"))
-# print(plotPairPCA(spe_ruv, assay = 5, n_dimension = 4, color = segment, title = "Quantile"))
-# print(plotPairPCA(spe_ruv, assay = 6, n_dimension = 4, color = segment, title = "Library size"))
+# combatIBD = ComBat(dat = Input, batch = colData(spe_ruv)$batch, mod = model0)
 # 
-# plotRLExpr(spe_ruv, assay = 2, color = segment) + ggtitle("TMM + RUV4")
-# plotRLExpr(spe_ruv, assay = 3, color = segment) + ggtitle("Limma TMM")
-# plotRLExpr(spe_ruv, assay = 4, color = segment) + ggtitle("Cyclic Loess")
-# plotRLExpr(spe_ruv, assay = 5, color = segment) + ggtitle("Quantile")
-# plotRLExpr(spe_ruv, assay = 6, color = segment) + ggtitle("Library size")
+# pcaDayBatRM = rankthreshPCA(combatIBD)
+# 
+# fviz(pcaDayBatRM, element = "ind", geom = c("point", "text"),
+#      habillage = colData(spe_ruv)$batch, repel=TRUE, palette = "Dark2", addEllipses = TRUE,
+#      ellipse.type = "convex", axes =c(1,2), label = "none") + coord_fixed() + ggtitle("")
+# 
+# fviz(pcaDayBatRM, element = "ind", axes = c(1, 2), geom = c("point", "text"),
+#      habillage = colData(spe_ruv)$state, repel = TRUE, palette = "Dark2",
+#      addEllipses = TRUE, ellipse.type = "convex", label = "none") + 
+#   ggtitle("") + coord_fixed()
+# 
+# 
+# fviz_eig(pcaDayBatRM, bar_width = 0.6) + ggtitle("")
+# 
+# # While it's theoretically possible to apply RUV4 and ComBat sequentially for batch correction, it's generally not recommended and could lead to unintended consequences. 
+# # These methods address unwanted variation in different ways, and applying them one after the other might over-correct the data or remove biologically relevant signals.
 
-## ----------------------------------------------------------------------------- PCA plots
 
-names = data.frame(names1 = names(spe_ruv@assays),
-                   names2 = c('Counts','TMM + RUV4','Limma TMM','Cyclic Loess','Quantile','Library size'))
+#---- tSNE and MDS plots
 
-for(i in 1:length(names(spe_ruv@assays)) )
+library(data.table)
+# datadir <- file.path("/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3_S4_limma_20k/")
+count_mat3 = Expression # fread(paste0(datadir, 'GeoMx_TMM_RUV4_CellTypeCorrection_readCount.txt'), stringsAsFactors = F, header = T)
+count_mat3 = as.data.frame(count_mat3)
+# row.names(count_mat3) = make.names(count_mat3$GeneSymbol,unique=T) 
+# count_mat3 = count_mat3[,-1]
+# colnames(count_mat3) = gsub('\\.','-',gsub('.dcc','',colnames(count_mat3)))
+dim(count_mat3)
+
+MD = fread(paste0(datadir, 'MetaData.txt'), stringsAsFactors = F, header = T)
+MD = as.data.frame(MD)
+colnames(MD)
+
+MD = MD[which(MD$SampleID %in% colnames(count_mat3)),]
+MD = MD[match(colnames(count_mat3), MD$SampleID),]
+
+identical(colnames(count_mat3), MD$SampleID)
+
+library(SummarizedExperiment)
+
+cellt = MD$state
+
+palette.colors(palette = "Okabe-Ito")
+# [1] "#000000" "#E69F00" "#56B4E9" "#009E73"
+# [5] "#F0E442" "#0072B2" "#D55E00" "#CC79A7"
+# [9] "#999999"
+
+colsn = c("#0072B2", "#D55E00", "#009E73")
+
+dim(count_mat3)
+length(cellt)
+
+# compute the distances between the rows of a data matrix.
+# distance "manhattan"
+
+dist1n.l1 = dist(t(count_mat3), "manhattan")
+dist2n.euclid = dist(t(count_mat3))
+
+# The Manhattan distance, also known as the L1 distance
+ce1Mds = cmdscale(dist1n.l1, k = 10, eig = TRUE)
+
+# L2 distance is also known as the Euclidean distance. 
+ce2Mds = cmdscale(dist2n.euclid, k = 10, eig = TRUE)
+
+# ----------------------------------------- Toy example of euclidean distance
+# Sample Gene Expression Matrix (genes as rows, samples as columns)
+expression_matrix <- matrix(
+  c(10, 12, 5, 8,   # Gene 1 expression across 4 samples
+    15, 11, 9, 13,  # Gene 2 expression across 4 samples
+    6,  8, 12, 7),  # Gene 3 expression across 4 samples
+  nrow = 3,
+  byrow = TRUE
+)
+colnames(expression_matrix) <- paste0("Sample-", 1:4)
+rownames(expression_matrix) <- paste0("Gene-", 1:3)
+
+print("Gene Expression Matrix:")
+kable(expression_matrix)
+
+#-------------------------------------------------------------------------------
+# 1. Euclidean Distance
+#-------------------------------------------------------------------------------
+
+# We need to transpose the matrix so that samples are rows for dist()
+transposed_matrix <- t(expression_matrix)
+
+# Calculate Euclidean distance
+kable(as.matrix(dist(transposed_matrix, method = "euclidean", diag = TRUE)))
+# euclidean_distances <- dist(transposed_matrix, method = "euclidean", diag = TRUE)
+
+# Formula Explanation for Euclidean Distance between Sample_1 and Sample_2:
+# Sample_1 = (10, 15, 6)
+# Sample_2 = (12, 11, 8)
+# d_E(Sample_1, Sample_2) = sqrt((10-12)^2 + (15-11)^2 + (6-8)^2)
+#                      = sqrt((-2)^2 + (4)^2 + (-2)^2)
+#                      = sqrt(4 + 16 + 4)
+#                      = sqrt(24)
+#                      ≈ 4.899
+
+# ----------------------------------------- End of the toy example
+
+# L1 distance is also known as the manhattan distance.  
+perc1  = round(100*sum(ce1Mds$eig[1:2])/sum(ce1Mds$eig))
+perc2  = round(100*sum(ce2Mds$eig[1:2])/sum(ce2Mds$eig))
+
+library("dplyr")
+library("ggplot2")
+plotscree = function(x, m = length(x$eig)) {
+  ggplot(tibble(eig = x$eig[seq_len(m)], k = seq(along = eig)),
+         aes(x = k, y = eig)) + theme_minimal() +
+    scale_x_discrete("k", limits = as.factor(seq_len(m))) + 
+    geom_bar(stat = "identity", width = 0.5, fill = "#ffd700", col = "#0057b7")
+}
+
+plotscree(ce1Mds, m = 4)
+plotscree(ce2Mds, m = 4)
+
+# The Manhattan distance, also known as the L1 distance
+c1mds = ce1Mds$points[, 1:2] |>
+  `colnames<-`(paste0("L1_PCo", 1:2)) |>
+  as_tibble()
+
+pdf(paste0("PCo_manhattan_logcounts_regress-out.pdf"), width = 8, height = 6)
+
+ggplot(c1mds, aes(x = L1_PCo1, y = L1_PCo2, color = cellt)) +
+  geom_point(aes(color = cellt), alpha = 0.6) +
+  scale_colour_manual(values = colsn) + guides(color = "none") + theme_linedraw() + geom_point(size = 4)
+
+dev.off()
+
+# L2 distance is also known as the Euclidean distance. 
+c2mds = ce2Mds$points[, 1:2] |>
+  `colnames<-`(paste0("L2_PCo", 1:2)) |>
+  as_tibble()
+
+c2mds = as.data.frame(c2mds)
+row.names(c2mds) = colnames(count_mat3)
+class(c2mds)
+
+pdf(paste0("PCoPlot_euclidean_logcounts_regress-out.pdf"), width = 8, height = 6)
+
+ggplot(c2mds, aes(x = L2_PCo1, y = L2_PCo2, color = cellt)) +
+  geom_point(aes(color = cellt), alpha = 0.6) +
+  scale_colour_manual(values = colsn) + guides(color = "none") + theme_linedraw() + geom_point(size = 4)
+
+dev.off()
+
+# L2 distance is also known as the Euclidean distance. [without DSP-1001660034021-C-A10]
+
+pdf(paste0("PCoPlot_euclidean_logcounts_regress-out_withoutDSP-1001660034021-C-A10.pdf"), width = 8, height = 6)
+
+ggplot(c2mds[-which(row.names(c2mds) == 'DSP-1001660034021-C-A10'),], aes(x = L2_PCo1, y = L2_PCo2, color = cellt[-which(row.names(c2mds) == 'DSP-1001660034021-C-A10')])) +
+  geom_point(aes(color = cellt[-which(row.names(c2mds) == 'DSP-1001660034021-C-A10')]), alpha = 0.6) +
+  scale_colour_manual(values = colsn) + guides(color = "none") + theme_linedraw() + geom_point(size = 4)
+
+dev.off()
+
+
+
+# legend
+ggpcolor = ggplot(c1mds,aes(x=L1_PCo1,y=L1_PCo2, color = cellt)) +
+  geom_point(aes(color = cellt), alpha = 0.6) +
+  scale_colour_manual(values=colsn, name = "cell type")
+g_legend = function(a) {
+  gt = ggplot_gtable(ggplot_build(a))
+  leg = which(sapply(gt$grobs, function(x) x$name) == "guide-box")
+  gt$grobs[[leg]]
+}
+
+library(grid)
+grid.draw(g_legend(ggpcolor))
+
+# "t-SNE"
+library("Rtsne")
+restsne = Rtsne(t(count_mat3), dims = 2, perplexity = 30, verbose = FALSE,
+                max_iter = 900)
+
+dftsne = restsne$Y[, 1:2] |>
+  `colnames<-`(paste0("tSNE", 1:2)) |>
+  as_tibble()
+
+pdf(paste0("tsnePlot_logcounts_regress-out.pdf"), width = 8, height = 6)
+
+ggplot(dftsne,aes(x = tSNE1, y = tSNE2, color = cellt)) +
+  geom_point(aes(color = cellt), alpha = 0.6) + geom_point(size = 4) +
+  scale_color_manual(values = colsn) + guides(color = "none") + theme_linedraw()
+
+dev.off()
+
+#-- explore the outlier in the tSNE plot
+#View(cbind(MD[, c('SampleID', 'state')], dftsne))
+
+QC_PASS_inc_GeneDetection_830 = fread('QC_PASS_inc_GeneDetection_830.txt', stringsAsFactors = F, header = T)
+QC_PASS_inc_GeneDetection_830 = as.data.frame(QC_PASS_inc_GeneDetection_830)
+# View(QC_PASS_inc_GeneDetection_830[which(QC_PASS_inc_GeneDetection_830$SampleID== 'DSP-1001660034021-C-A10'),])
+
+# DSP-1001660034021-C-A10 - min estimated nuclei 20
+# PD-without-LB
+# 5.6253434
+# -2.2945440
+# DSP-1001660034021-C-A10 - min estimated nuclei 5
+# -10.0889329
+# 11.72131035
+
+
+#---- visualization of expression level per gene using revised Expression profile
+meta.data = data.frame(slide.name = colData(spe_ruv)$slide.name, state = colData(spe_ruv)$state)
+row.names(meta.data) = row.names(colData(spe_ruv))
+
+meta.data$slide.name[which(meta.data$state == 'PD-with-LB')] = paste0('V', meta.data$slide.name[which(meta.data$state == 'PD-with-LB')])
+meta.data$slide.name[which(meta.data$state == 'PD-without-LB')] = paste0('R', meta.data$slide.name[which(meta.data$state == 'PD-without-LB')])
+
+identical(colnames(Expression), row.names(meta.data))
+
+library(Seurat)
+target_Data_Seurat <- CreateSeuratObject(counts = Expression, project = "Seurat",  meta.data = meta.data, assay = "GeoMx")
+
+library(scater)
+sce <- as.SingleCellExperiment(target_Data_Seurat)
+# assay(sce) # uses the normalized values
+
+query = 'KCNJ6'
+query = 'CALB1'
+query = "SNCA"
+# ENO1
+
+library(dittoSeq)
+# dittoPlot(sce, query, group.by = "state")
+
+dittoPlot(sce, query, group.by = "state",
+          plots = c("vlnplot", "jitter", "boxplot"),
+          # change the color and size of jitter points
+          jitter.color = "blue", jitter.size = 0.7,
+          # change the outline color and width, and remove the fill of boxplots
+          boxplot.color = "white", boxplot.width = 0.1,
+          boxplot.fill = FALSE,
+          # change how the violinplot widths are normalized across groups
+          vlnplot.scaling = "count"
+)
+
+#-----------------
+# print(fviz_eig(res.pca, addlabels = TRUE))
+# Graph of the variables
+# fviz_pca_var(res.pca, col.var = "black")
+
+# fviz_cos2(res.pca, choice = "var", axes = 1:2)
+# fviz_pca_var(res.pca, col.var = "cos2",
+#              gradient.cols = c("black", "orange", "green"),
+#              repel = TRUE)
+
+#--- variable selection using PCA before and after cell type correction
+name = 'logcounts'
+
+if(name == 'logcounts')
 {
-  name = names(spe_ruv@assays)[i]
-  # print(names$names2[names$names1 == name])
-  setwd(datadir)
-
-  pdf(paste0(name, "_plotPairPCA.pdf"), width = 10, height = 10)
-
-  library(factoextra)
-  library(tidyverse)
-  identical(colnames(spe_ruv@assays@data@listData$logcounts), row.names(colData(spe_ruv)))
-  res.pca <- prcomp(t(spe_ruv@assays@data@listData[[name]]),  scale = TRUE)
-  p = fviz_pca_biplot(res.pca,
-                  select.var = list(cos2 = 5),
-                  # Individuals
-                  geom.ind = "point",
-                  labelsize = 6,
-                  fill.ind = colData(spe_ruv)$segment, col.ind = "black",
-                  pointshape = 21, pointsize = 4,
-                  palette = "jco",
-                  addEllipses = TRUE,
-                  # Variables
-                  alpha.var ="contrib", col.var = "contrib",
-                  gradient.cols = "RdYlBu",
-                  legend.title = list(fill = "Neurons", color = "Contrib",
-                                      alpha = "Contrib")
-  ) + ggtitle(names$names2[names$names1 == name]) + coord_fixed() + theme(axis.text=element_text(size=25), axis.title=element_text(size=25, face="bold"), legend.text=element_text(size=20), legend.title=element_text(size=20), plot.title = element_text(size = 30, face="bold"))
-
-  print(p)
-  dev.off()
+  #before
+  before.pca <- prcomp(t(spe_ruv@assays@data@listData[["logcounts"]]),  scale = TRUE)
   
-  print(p)
-  #-----------------
-  # print(fviz_eig(res.pca, addlabels = TRUE))
-  # Graph of the variables
-  # fviz_pca_var(res.pca, col.var = "black")
+  #after
+  after.pca <- prcomp(t(Expression),  scale = TRUE)
   
-  # fviz_cos2(res.pca, choice = "var", axes = 1:2)
-  # fviz_pca_var(res.pca, col.var = "cos2",
-  #              gradient.cols = c("black", "orange", "green"),
-  #              repel = TRUE)
-  
-  #--- variable selection using PCA for comparison with 5k
- 
-  if(name == 'logcounts')
-  {
   # attr(spe_ruv@int_colData@listData$reducedDims$PCA, "varExplained")
   # attr(spe_ruv@int_colData@listData$reducedDims$PCA, "rotation")
   
-    #print(name)
-    
-  # Loadings
-  loadings <- res.pca$rotation
+  #print(name)
+  
+  # Loadings before
+  loadings <- before.pca$rotation
   
   number_of_PC_to_keep = 2;
   pc_importance_short <- abs(loadings[, 1:number_of_PC_to_keep])
@@ -1079,89 +2066,555 @@ for(i in 1:length(names(spe_ruv@assays)) )
   length(selected_variables_short)
   
   #Example using percentile.
-  threshold_percentile = 0.9;
+  threshold_percentile = 0.95;
   threshold_value = quantile(variable_importance_short, threshold_percentile);
-  selected_variables_percentile = variable_importance_short[which(variable_importance_short > threshold_value)]
-  length(selected_variables_percentile)
+  selected_variables_percentile_before = variable_importance_short[which(variable_importance_short > threshold_value)]
+  length(selected_variables_percentile_before)
+  
+  
+  # Loadings after
+  loadings <- after.pca$rotation
+  
+  number_of_PC_to_keep = 2;
+  pc_importance_short <- abs(loadings[, 1:number_of_PC_to_keep])
+  variable_importance_short <- rowSums(pc_importance_short)
+  selected_variables_short <- names(sort(variable_importance_short, decreasing = TRUE))
+  length(selected_variables_short)
+  
+  #Example using percentile.
+  threshold_percentile = 0.95;
+  threshold_value = quantile(variable_importance_short, threshold_percentile);
+  selected_variables_percentile_after = variable_importance_short[which(variable_importance_short > threshold_value)]
+  length(selected_variables_percentile_after)
+  
+  length(unique(names(selected_variables_percentile_before)))
+  length(intersect(names(selected_variables_percentile_before), names(selected_variables_percentile_after)))
+  setdiff(names(selected_variables_percentile_before), names(selected_variables_percentile_after))
+  
+  x <- list()
+  
+  x[['All Cell Types']] = names(selected_variables_percentile_before)
+  x[['Neurons']] = names(selected_variables_percentile_after)
+  
+  pdf(paste0("PCA-associated-genes_regress_out.pdf"), width = 10, height = 7)
+  
+  names(x)
+  
+  library(ggvenn)
+  print(ggvenn(
+    x, 
+    fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF"),
+    stroke_size = 0.5, set_name_size = 8, text_size = 8
+  ))
+  
+  dev.off()
+  
   
   getwd()
-  write.table(selected_variables_percentile, paste0(name, "_selected_variables_percentile.txt"), sep = '\t', col.names = F)
-  }
-  #-----------------
-  
+  write.table(names(selected_variables_percentile_after), paste0("After_regressout_cellTypes_selected_variables_95percentile.txt"), sep = '\t', col.names = F)
 }
 
-#------------------
+#================================================== co-expression analysis
 
-# As I use this potentially can omit the GeoMx pipeline gene filtering
-# keep <- filterByExpr(dge, design) # , min.count = 10, min.total.count = 15, large.n = 10, min.prop = 0.7
-# table(keep)
-# 
-# dge_all <- dge[keep, ]
-# dge_all <- estimateDisp(dge_all, design = design, robust = TRUE)
-# 
-# plotBCV(dge_all, legend.position = "topleft", ylim = c(0, 1.3))
-# bcv_df <- data.frame(
-#   'BCV' = sqrt(dge_all$tagwise.dispersion),
-#   'AveLogCPM' = dge_all$AveLogCPM,
-#   'gene_id' = rownames(dge_all)
-# )
+colData(spe_ruv)$segment
+identical(colnames(Expression), row.names(colData(spe_ruv)))
 
-## ----------------------------------------------------------------------------- histogram of differentially expressed genes
+sample_annot = data.frame(SampleName = row.names(colData(spe_ruv)), Class = colData(spe_ruv)$segment)
 
-# highbcv <- bcv_df$BCV > 0.8
-# highbcv_df <- bcv_df[highbcv, ]
-# points(highbcv_df$AveLogCPM, highbcv_df$BCV, col = "red")
-# text(highbcv_df$AveLogCPM, highbcv_df$BCV, labels = highbcv_df$gene_id, pos = 4)
-# v <- voom(dge_all, design, plot = F, normalize="quantile")
+#- NOTE ---- remove outlier samples
+Expression = Expression[, -which(colnames(Expression) == 'DSP-1001660034021-C-A10')]
+sample_annot = sample_annot[-which(sample_annot$SampleName == 'DSP-1001660034021-C-A10'),]
+identical(colnames(Expression), sample_annot$SampleName)
 
-names(spe_ruv@assays)
-gsub(" ", "','",capture.output(cat(names(spe_ruv@assays))))
+spe_ruv = spe_ruv[,-which(colnames(assay(spe_ruv, 'logcounts')) == 'DSP-1001660034021-C-A10')]
+assay(spe_ruv, 'logcounts') = Expression
+identical(colnames(assay(spe_ruv, 'logcounts')), colnames(Expression))
 
-names = data.frame(names1 = names(spe_ruv@assays),
-names2 = c('counts','TMM+RUV4','Limma TMM','Cyclic Loess','Quantile','Library size'))
+#-----
 
-getwd()
+#sample_annot$Class[-which(sample_annot$Class == 'control')] = 'PD'
 
-for(name in names(spe_ruv@assays))
+#BiocManager::install("CEMiTool")
+library("CEMiTool")
+# run cemitool with sample annotation
+cem <- cemitool(Expression, sample_annot, apply_vst = FALSE, cor_method = "spearman") # cor_method = "spearman", apply_vst Logical. If TRUE, will apply Variance Stabilizing Transform
+
+sample_annotation(cem,
+                  sample_name_column="SampleName",
+                  class_column="Class") <- sample_annot
+
+# generate heatmap of gene set enrichment analysis
+cem <- mod_gsea(cem)
+cem <- plot_gsea(cem)
+show_plot(cem, "gsea")
+
+# plot gene expression within each module
+cem <- plot_profile(cem)
+plots <- show_plot(cem, "profile")
+plots[2]
+
+# read GMT file
+gmt_fname <- '/Users/isarnassiri/Documents/GeoMx_Analysis/reference_datasets/msigdb_v2024.1.Hs_GMTs/c2.cp.kegg_legacy.v2024.1.Hs.symbols.gmt'
+# gmt_fname <- system.file("extdata", "pathways.gmt", package = "CEMiTool")
+gmt_in <- read_gmt(gmt_fname)
+length(unique(gmt_in$term))
+length(unique(gmt_in$gene))
+
+# perform over representation analysis
+cem <- mod_ora(cem, gmt_in)
+
+# plot ora results
+cem <- plot_ora(cem)
+plots <- show_plot(cem, "ora")
+plots[1]
+
+# read interactions
+library(data.table)
+int_df = fread('/Users/isarnassiri/Documents/GeoMx_Analysis/reference_datasets/BIOGRID-PROJECT-alzheimers_disease_project-4.4.245/BIOGRID-PROJECT-alzheimers_disease_project-INTERACTIONS-4.4.245.tab3.txt', stringsAsFactors = F, header = T)
+int_df = as.data.frame(int_df)
+int_df = int_df[which(int_df$`Organism Name Interactor A` == "Homo sapiens"),]
+table(int_df$`Organism Name Interactor B`)
+
+int_df = data.frame(gene1symbol = int_df$`Official Symbol Interactor A`, gene2symbol = int_df$`Official Symbol Interactor B`)
+
+# plot interactions
+library(ggplot2)
+interactions_data(cem) <- int_df # add interactions
+cem <- plot_interactions(cem) # generate plot
+plots <- show_plot(cem, "interaction") # view the plot for the first module
+plots[1]
+
+# save all plots
+save_plots(cem, "all", force=TRUE, directory="/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3_S4_limma_20k/cemitool/Plots")
+
+# create report as html document
+generate_report(cem, directory="/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3_S4_limma_20k/cemitool/Report" , force=TRUE  )
+
+# write analysis results into files
+write_files(cem, directory="/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3_S4_limma_20k/cemitool/Tables", force=TRUE  )
+
+table(cem@module$modules)
+
+M1G = cem@module$genes[cem@module$modules == "M1"]
+write.table(M1G, "/Users/isarnassiri/Documents/Xenium/Custom_Panel_and_Script/GeoMx_M1.txt", quote = F, row.names = F, sep = '\t', col.names = F)
+
+M2G = cem@module$genes[cem@module$modules == "M2"]
+write.table(M2G, "/Users/isarnassiri/Documents/Xenium/Custom_Panel_and_Script/GeoMx_M2.txt", quote = F, row.names = F, sep = '\t', col.names = F)
+
+#================================================== compare co-expression modules and gene sets
+#------ selected brain regions
+
+files = list.files('/Users/isarnassiri/Documents/Xenium/Custom_Panel_and_Script/USED/', pattern = 'Region_')
+datadir2 = '/Users/isarnassiri/Documents/Xenium/Custom_Panel_and_Script/USED/'
+setwd(datadir2)
+
+require(data.table) ## 1.9.2 or 1.9.3
+genesets_brain_region = rbindlist(lapply(files, fread), idcol="ID")
+
+genesets_brain_region$ID = gsub('.*rna_|.tsv', '', files)[genesets_brain_region$ID]
+table(genesets_brain_region$ID)
+table(duplicated(genesets_brain_region$Gene))
+
+toMatch <- c("Cancer", "Mouse", "mouse", "pig", "blood", "Blood", "Evidence", "HPA evidence", "Cancer", "cancer", "cell line", "RNA single cell", "RNA tissue", "Tissue expression cluster", "Cell line expression cluster", "Single cell expression cluster", "UniProt evidence", "NeXtProt evidence", "CCD Protein", "CCD Transcript" , "Interactions"  )
+matches <- unique(grep(paste(toMatch,collapse="|"), colnames(genesets_brain_region), value=TRUE))
+
+genesets_brain_region = as.data.frame(genesets_brain_region)
+class(genesets_brain_region)
+genesets_brain_region = genesets_brain_region[,-which(colnames(genesets_brain_region) %in% matches)]
+colnames(genesets_brain_region)
+
+table((genesets_brain_region$`RNA single nuclei brain distribution`))
+genesets_brain_region = genesets_brain_region[-which(genesets_brain_region$`RNA single nuclei brain distribution` %in% c('', 'Not detected')),]
+dim(genesets_brain_region)
+
+table(genesets_brain_region$ID)
+
+#-------------------- comparison with GeoMx co-expression module
+
+library(data.table)
+M1G = fread("/Users/isarnassiri/Documents/Xenium/Custom_Panel_and_Script/GeoMx_M1.txt", stringsAsFactors = F, header = F)
+
+files = list.files('/Users/isarnassiri/Documents/GeoMx_Analysis/Analysis', pattern = 'sc_brain_region_')
+setwd('/Users/isarnassiri/Documents/GeoMx_Analysis/Analysis')
+genesets = rbindlist(lapply(files, fread), idcol="ID")
+genesets$ID = gsub('.*rna_|.tsv', '', files)[genesets$ID]
+dim(genesets)
+
+library(knitr)
+kable(table(genesets$ID))
+kable(table(genesets_brain_region$ID))
+
+library(dplyr)
+# I have some duplicate genes per group
+# View(genesets_brain_region %>% group_by(ID, Gene) %>% filter(n()>1) )
+
+x <- list(
+  `Amygdala` = unique(genesets_brain_region$Gene[genesets_brain_region$ID == 'Region_amygdala']),
+  `Hippocampus` = unique(genesets_brain_region$Gene[genesets_brain_region$ID == 'Region_hippocampal_formation']),
+  `Midbrain` = unique(genesets_brain_region$Gene[genesets_brain_region$ID == 'Region_midbrain'])
+)
+
+intersection_selected_brain_regions <- Reduce(intersect, x)
+length(intersection_selected_brain_regions)
+
+celltypes = c("Neurons", "Microglia", "Astrocyte", "Oligodendrocyte")
+
+totalGenesCellType = 0
+for(CellTypeName in celltypes)
 {
+  eval(call("<-", as.name(paste0(CellTypeName, '_input')), genesets$Gene[which(genesets$ID == CellTypeName & genesets$Gene %in% intersection_selected_brain_regions)]))
+  totalGenesCellType = totalGenesCellType + length(genesets$Gene[which(genesets$ID == CellTypeName & genesets$Gene %in% intersection_selected_brain_regions)])
+}
+totalGenesCellType
+
+GWAS_input = fread('/Users/isarnassiri/Documents/Xenium/Custom_Panel_and_Script/USED/GWAS/GWAS_hits_L32.txt', stringsAsFactors = F, header = T)
+GWAS_input = GWAS_input$SYMBOL[which(GWAS_input$SYMBOL %in% intersection_selected_brain_regions)]
+
+PD_input = fread('/Users/isarnassiri/Documents/Xenium/Custom_Panel_and_Script/USED/PD.txt', stringsAsFactors = F, header = F)
+PD_input = PD_input$V1[which(PD_input$V1 %in% intersection_selected_brain_regions)]
+
+Drug_input = fread('/Users/isarnassiri/Documents/Xenium/Custom_Panel_and_Script/USED/Drugable.txt', stringsAsFactors = F, header = T)
+Drug_input = Drug_input$`Gene Name`[which(Drug_input$`Gene Name` %in% intersection_selected_brain_regions)]
+
+ND_input = fread('/Users/isarnassiri/Documents/Xenium/Custom_Panel_and_Script/USED/ND.txt', stringsAsFactors = F, header = F)
+ND_input = ND_input$V1[which(ND_input$V1 %in% intersection_selected_brain_regions)]
+class(ND_input)
+
+# Hallmark gene sets
+gmt_fname <- '/Users/isarnassiri/Documents/GeoMx_Analysis/reference_datasets/msigdb_v2024.1.Hs_GMTs/h.all.v2024.1.Hs.symbols.gmt'
+gmt_in <- read_gmt(gmt_fname)
+length(unique(gmt_in$term))
+length(unique(gmt_in$gene))
+
+Hypoxia_input = gmt_in[which(gmt_in$term %in% "HALLMARK_HYPOXIA"),]
+Hypoxia_input = Hypoxia_input$gene[which(Hypoxia_input$gene %in% intersection_selected_brain_regions)]
+length(Hypoxia_input)
+
+Inflammation_input = gmt_in[which(gmt_in$term %in% "HALLMARK_INFLAMMATORY_RESPONSE"),]
+Inflammation_input = Inflammation_input$gene[which(Inflammation_input$gene %in% intersection_selected_brain_regions)]
+length(Inflammation_input)
+
+GeoMx_input = fread('/Users/isarnassiri/Documents/Xenium/Custom_Panel_and_Script/GeoMx_M1.txt', stringsAsFactors = F, header = F)
+GeoMx_input = GeoMx_input$V1
+
+ND_input = unique(ND_input, PD_input)
+length(ND_input)
+
+all_objects <- ls()
+selected_objects = all_objects[grep('_input', all_objects)]
+selected_objects = selected_objects[-grep("summary_input", selected_objects)]
+
+setdiff(GeoMx_input, intersection_selected_brain_regions)
+
+for(CellTypeName in celltypes)
+{
+  eval(call("<-", as.name(paste0(CellTypeName, '_input')), genesets$Gene[which(genesets$ID == CellTypeName & genesets$Gene %in% intersection_selected_brain_regions)]))
+  totalGenesCellType = totalGenesCellType + length(genesets$Gene[which(genesets$ID == CellTypeName & genesets$Gene %in% intersection_selected_brain_regions)])
+}
+
+number_of_rows = length(unique(as.character(unlist(mget(selected_objects)))))
+# number_of_rows = length(cem@module$genes[cem@module$modules == "M1"])
+number_of_columns = length(selected_objects)
+
+upsetPlotInput = matrix(0, nrow = number_of_rows, ncol = number_of_columns)
+colnames(upsetPlotInput) = selected_objects # gsub("_input","",selected_objects)
+row.names(upsetPlotInput) = unique(as.character(unlist(mget(selected_objects)))) # cem@module$genes[cem@module$modules == "M1"] #
+
+for (n in selected_objects) {
+  print(n)
+  print(length(upsetPlotInput[which(row.names(upsetPlotInput) %in% get(n)), which(colnames(upsetPlotInput) == n)]))
+
+  upsetPlotInput[which(row.names(upsetPlotInput) %in% get(n)),which(colnames(upsetPlotInput) == n)] = 1
+
+  # if(length(upsetPlotInput[which(row.ns(upsetPlotInput) %in% get(n)),which(colns(upsetPlotInput) == n)]) > 0)
+  # {
+  #   upsetPlotInput[which(row.ns(upsetPlotInput) %in% get(n)),which(colns(upsetPlotInput) == n)] = 1
+  # }else{
+  #   upsetPlotInput = upsetPlotInput[,-which(colns(upsetPlotInput) == n)]
+  # }
+}
+
+class(upsetPlotInput)
+colnames(upsetPlotInput) = gsub("_input","", colnames(upsetPlotInput))
+
+library(UpSetR)
+my_upset_plot <- upset(as.data.frame(upsetPlotInput),
+                       nintersects = NA,
+                       nsets = 20,
+                       order.by = "freq",
+                       decreasing = T,
+                       mb.ratio = c(0.6, 0.4),
+                       number.angles = 0,
+                       text.scale = 1.1,
+                       point.size = 2.8,
+                       line.size = 1,
+                       set_size.show = TRUE
+)
+print(my_upset_plot)
+# Save as PDF (vector graphics, good for print)
+pdf("/Users/isarnassiri/Documents/Xenium/Custom_Panel_and_Script/upset_plot.pdf", width = 10, height = 6) # Adjust width and height as needed
+print(my_upset_plot) # You need to explicitly print the plot object
+dev.off()
+
+for(n in selected_objects)
+{
+  print(length(mget(n)))
+}
+
+merged_vector <- unlist(mget(selected_objects[which(selected_objects %in% c("GWAS_input", "Astrocyte_input", "Microglia_input", "Neurons_input", "Oligodendrocyte_input"))]))
+length(merged_vector)
+
+length(unique(merged_vector))
+length(unique(c(intersect(ND_input, GeoMx_input))))
+length(unique(c(intersect(Hypoxia_input, GeoMx_input))))
+length(unique(c(intersect(Inflammation_input, GeoMx_input))))
+length(unique(c(intersect(Drug_input, GeoMx_input))))
+
+Selected_Genes = unique(c(unique(merged_vector),
+unique(c(intersect(ND_input, GeoMx_input))),
+unique(c(intersect(Hypoxia_input, GeoMx_input))),
+unique(c(intersect(Inflammation_input, GeoMx_input))),
+unique(c(intersect(ND_input, Drug_input))),
+unique(c(intersect(Drug_input, GeoMx_input)))))
+
+Selected_Genes = Selected_Genes[Selected_Genes != "ENSG00000265118"]
+
+#-- selected genes for Xenium panel design
+getwd()
+write.table(Selected_Genes, '/Users/isarnassiri/Documents/Xenium/Custom_Panel_and_Script/USED/Selected_Genes.txt', quote = F, row.names = F, sep = '\t', col.names = F)
+
+#================================================== end: further exploration of data before DEGA ==================================================
+
+setwd(datadir)
+
+# in the case that you want to see the impact of normalization method on number of DEGs
+names = data.frame(names1 = names(spe_ruv@assays),
+                   names2 = c('Counts','TMM + RUV4','Limma TMM','Cyclic Loess','Quantile','Library size'))
+name = "logcounts"
+
+#------------------ select a reference ------------------
+
+LMM = FALSE # for with Lewy body vs. without Lewy body
+EFA_usage = FALSE
+
+# LB509TH - TH (TH is reference)
+# contr.matrix <- makeContrasts(BvT = PDwLBP - PDwoLBP, levels = colnames(design))
+
+states = c("PDwLBP - control", "PDwoLBP - control", "PDwLBP - PDwoLBP")
+state = "PDwLBP - control"
+ 
+for(state in states)
+{
+
+#============================================ 
+library(stringr)
+state1 = str_split_fixed(state, " - ", 2)[1]
+state2 = str_split_fixed(state, " - ", 2)[2]
+
+if(state1 == 'PDwLBP'){state1 = "PD-with-LB"}
+if(state1 == 'PDwoLBP'){state1 = "PD-without-LB"}
+if(state2 == 'PDwLBP'){state2 = "PD-with-LB"}
+if(state2 == 'PDwoLBP'){state2 = "PD-without-LB"}
+
+spe_ruv3 <- spe_ruv[, grep(Run, colData(spe_ruv)$scan.name)]
+spe_ruv3 <- spe_ruv3[, which(colData(spe_ruv3)$segment %in% c(state1, state2))]
+
+#--- test possibilities
+# colnames(as.data.frame(colData(spe_ruv3)))
+# spe_ruv3 <- spe_ruv3[, which(colData(spe_ruv3)$NucleiCount >= 10)]
+# as.data.frame(assay(spe_ruv3, name))[,which(colnames(as.data.frame(assay(spe_ruv3, name))) %in% c('DSP-1001660036859-D-B06', 'DSP-1001660034021-C-B12'))]
+#---
+
+colData(spe_ruv3)$slide.name[grep('PD ', colData(spe_ruv3)$slide.name)] = gsub('PD ', 'PD', colData(spe_ruv3)$slide.name[grep('PD ', colData(spe_ruv3)$slide.name)])
+colData(spe_ruv3)$slide.name[-grep('PD', colData(spe_ruv3)$slide.name)] = paste0('C', colData(spe_ruv3)$slide.name[-grep('PD', colData(spe_ruv3)$slide.name)])
+
+colData(spe_ruv3)$slide.name[which(colData(spe_ruv3)$state == 'PD-with-LB')] = paste0('V', colData(spe_ruv3)$slide.name[which(colData(spe_ruv3)$state == 'PD-with-LB')])
+colData(spe_ruv3)$slide.name[which(colData(spe_ruv3)$state == 'PD-without-LB')] = paste0('R', colData(spe_ruv3)$slide.name[which(colData(spe_ruv3)$state == 'PD-without-LB')])
+
+colData(spe_ruv3)$slide.name = gsub(' .*|_.*','', colData(spe_ruv3)$slide.name)
+colData(spe_ruv3)$slide.name = gsub('\\/', '.', colData(spe_ruv3)$slide.name)
+
+table(colData(spe_ruv3)$state)
+# PD-with-LB PD-without-LB 
+# 54            95 
+
+# if(EFA_usage == TRUE & state == "PDwLBP - PDwoLBP")
+# {
+#   tier_PDwithoutLBcompacta = fread("PD-without-LBcompacta.txt", header = T, stringsAsFactors = F)
+#   tier_PDwithoutLBcompacta = as.data.frame(tier_PDwithoutLBcompacta)
+# 
+#   tier_PDwithLBcompacta = fread("PD-with-LBcompacta.txt", header = T, stringsAsFactors = F)
+#   tier_PDwithLBcompacta = as.data.frame(tier_PDwithLBcompacta)
+# 
+#   #-------
+#   spe_ruv3 = spe_ruv3[, which(row.names(colData(spe_ruv3)) %in% gsub('\\.','-', c(tier_PDwithLBcompacta$x, tier_PDwithoutLBcompacta$x)))]
+# }
+
+#============================================ keep pair samples for PDwLBP vs PDwoLBP
+
+# if(state == "PDwLBP - PDwoLBP")
+# {
+# 
+#   #--- more than one segment per donor
+#   count_segments_per_donor = as.data.frame(table(colnames(input_heatmap)))
+#   count_segments_per_donor_selected = count_segments_per_donor[which(count_segments_per_donor$Freq > 1),]
+#   
+#   CountMatrix = CountMatrix[,which(colnames(CountMatrix) %in% as.character(count_segments_per_donor_selected$Var1))]
+#   #---
+#   
+#   toMatch <- gsub('^.', '', colnames(CountMatrix))[duplicated(gsub('^.', '', colnames(CountMatrix) )) ]
+#   
+#   # OR
+#   matches <- unique(grep(paste(toMatch, collapse="|"), colnames(CountMatrix), value=TRUE))
+#   
+#   CountMatrix_subset = CountMatrix[,which(colnames(CountMatrix) %in% matches)]
+#   dim(CountMatrix_subset)
+# 
+#   #-------
+#   spe_ruv3 = spe_ruv3[, which(colData(spe_ruv3)$slide.name %in% matches)]
+# }
+
+#============================================ pseudobulk
+input_heatmap = assay(spe_ruv3, 'logcounts')
+CN = colData(spe_ruv3)$scan.name
+
+identical(colnames(input_heatmap), row.names(colData(spe_ruv3)))
+colnames(input_heatmap) = colData(spe_ruv3)$slide.name
+table(colData(spe_ruv3)$slide.name)
+
+patterns <- names(table(colnames(input_heatmap)))
+CountMatrix <- sapply(patterns, function(xx) rowSums(input_heatmap[,grep(xx, names(input_heatmap)), drop=FALSE]))  # loop through
+dim(CountMatrix)
+
+#============================================  
+
+#--- summary of segments used for DEGs analysis
+library(edgeR)
+library(limma)
+# batch is a blocking factor and using in as a covarinace make the model two-factor analysis (lower level of noise and more parameters that beed to be estimated (the fit has fewer degreees of freedom))
+# set up a paired analysis by adding donors as a blocking factor.
+
+rm(design)
+# design <- model.matrix(~0 + segment + Donors + Astro + Micro + Oligo, data = colData(spe_ruv3)) # Adding ruv_W1 + ruv_W2 reduces the number of DEGs by up to 3.
+# View( as.data.frame(colData(spe_ruv3)))
+
+# I tried batch_combined and batchslide as covariance. batchslide generates more DEGs and I donot get PD as first enrich disease. I decided to proceed with batch_combined.
+
+dim(colData(spe_ruv3))
+colnames(colData(spe_ruv3))
+design <- model.matrix(~0 + segment + batch_combined, data = colData(spe_ruv3)) # Adding ruv_W1 + ruv_W2 reduces the number of DEGs by up to 3.
+colnames(design)
+dim(design)
+
+# Use interaction terms: If you suspect that the biological effect of interest might differ across batches, consider including interaction terms between the batch and the condition in your model.
+# Account for Batch Effects in Your Statistical Model in Addition to Correction: This is often recommended over aggressive batch removal.
+# + batch:state - does not work in makeContrasts Donors + 
+
+# if(state == "PDwLBP - PDwoLBP")
+# {
+#   rm(design)
+#   # design <- model.matrix(~0 + segment + Donors + Astro + Micro + Oligo, data = colData(spe_ruv3)) # Adding ruv_W1 + ruv_W2 reduces the number of DEGs by up to 3.
+#   # View( as.data.frame(colData(spe_ruv3)))
+#   design <- model.matrix(~0 + segment + ruv_W1 + ruv_W2 + Donors + Astro + Micro + Oligo, data = colData(spe_ruv3)) # Adding ruv_W1 + ruv_W2 reduces the number of DEGs by up to 3.
+#   colnames(design)
+# }
+
+colnames(design) <- gsub("^segment","", colnames(design))
+colnames(design) <- gsub("\\+","",colnames(design)) # Double check this part
+colnames(design)[which(colnames(design) == "PD-with-LB")] = "PDwLBP"
+colnames(design)[which(colnames(design) == "PD-without-LB")] = "PDwoLBP"
+
+contr.matrix <- makeContrasts(BvT = state, levels = colnames(design))
+
+query = gsub(' - .*','',state)
+control = gsub('.* - ','',state)
+
+dim(design)
+dim(colData(spe_ruv3))
+
+#============================================ 
+dim(design)
+dim(assay(spe_ruv3, name))  
+  
 print(name)
-fit <- lmFit(assay(spe_ruv, name), design = design)
+
+if(state == "PDwLBP - PDwoLBP")
+{
+  # Skew towards 1 (or a spike at 1): This can happen if:
+  # 1. The statistical test is not appropriate for your data (e.g., assumptions are violated).
+  fit <- lmFit(assay(spe_ruv3, name), design = design, method = 'robust', maxiter = 25, psi = 'psi.huber') # 
+  
+  # 2. Genes with very low or zero counts are being inappropriately analyzed, leading to p-values of 1.
+  # If I filter genes I get a perfect p-valule plot; but I leave it as it is because the number of up-reg is too low.
+  # spe_ruv4 <- addPerROIQC(spe_ruv3, rm_genes = TRUE, min_count = 3, sample_fraction = 0.95)
+  # dim(spe_ruv4)
+  # fit <- lmFit(assay(spe_ruv4, name), design = design, method = 'robust', maxiter = 25, psi = 'psi.huber')
+
+}else{
+  fit <- lmFit(assay(spe_ruv3, name), design = design)
+}
+
+# "ls" (Least Squares): This is the default method for lmFit. It uses ordinary least squares (OLS) regression to fit a linear model for each gene independently.
+# "robust" (Robust Regression): When to use: Robust regression is less sensitive to outliers in the data. If your data contains extreme expression values for some genes that might unduly influence the least squares fit, robust regression can provide more stable and reliable estimates of coefficients and standard errors.
+# What it does: Instead of minimizing the sum of squared residuals, it minimizes a robust loss function (e.g., Huber or Tukey's bisquare), giving less weight to large residuals (outliers). This makes the fit less susceptible to individual data points that deviate significantly from the overall trend.
+
 fit_contrast <- contrasts.fit(fit, contrasts = contr.matrix)
 efit <- eBayes(fit_contrast, robust = TRUE)
 
-results_efit <- decideTests(efit, p.value = 0.025)
-summary_efit <- summary(results_efit)
-print(summary_efit)
+# lmFit(method="robust"): Deals with individual expression value outliers (observation-based). arrayWeights(): Deals with outlier arrays (sample-based).
+# eBayes(robust=TRUE): Deals with outlier (hypervariable) genes in the empirical Bayes moderation step.
+
+# results_efit <- decideTests(efit, p.value = 0.025)
+# summary_efit <- summary(results_efit)
+# print(summary_efit)
 
 de_results_BvT <- topTable(efit, coef = 1, sort.by = "P", n = Inf)
 dim(de_results_BvT)
 
+print(state)
+print(dim(de_results_BvT[which(de_results_BvT$adj.P.Val < 0.025 & (de_results_BvT$logFC) > 0.1),]))
+print(dim(de_results_BvT[which(de_results_BvT$adj.P.Val < 0.025 & (de_results_BvT$logFC) < -0.1),]))
+print(dim(de_results_BvT[which(de_results_BvT$adj.P.Val < 0.025 & abs(de_results_BvT$logFC) > 0.1),]))
+print(dim(de_results_BvT))
+
+
+#----- intersection with KEGG PD
+ND_input = fread('/Users/isarnassiri/Documents/Xenium/Custom_Panel_and_Script/ND.txt', stringsAsFactors = F, header = F)
+dim(ND_input)
+print(length(intersect(ND_input$V2, row.names(de_results_BvT[which(de_results_BvT$adj.P.Val < 0.025 & abs(de_results_BvT$logFC) > 0.1),]))))
+#-----
+
+#}
+
+library(data.table)
+de_results_BvT$Gene = row.names(de_results_BvT)
+fwrite(de_results_BvT, paste0(datadir, Run, "_", query, "_", control, '_GeoMx_DEA.txt'), quote = F, row.names = F, sep = '\t')
+
 ## --- "Visual estimation of the FDR with the p-value histogram."
 alpha = binw = 0.025
 pi0 = 2 * mean(de_results_BvT$adj.P.Val > 0.5)
-
+  
 pi0 * alpha / mean(de_results_BvT$adj.P.Val <= alpha)
 (pi0 * binw * nrow(de_results_BvT))/table(de_results_BvT$adj.P.Val < alpha)[1]
-
+  
 #----
 library(ggplot2)
-
+  
 sum(summary_efit[1] + summary_efit[2] + summary_efit[3])
-
+  
 p = ggplot(as(de_results_BvT, "data.frame"), aes(x = adj.P.Val)) +
-  geom_histogram(binwidth = binw, fill = "Royalblue", boundary = 0, alpha=0.6) +
-  ggtitle(paste0(names$names2[names$names1 == name], ' (DEGs: ',sum(summary_efit[1] + summary_efit[3]),', Up-regulated: ',summary_efit[3],', Down-regulated: ',summary_efit[1],')')) +
-  geom_hline(yintercept = pi0 * binw * nrow(de_results_BvT), color="black", linetype="dashed", size=1) +
-  geom_vline(xintercept = alpha, col = "red") +
-  annotate("text", x = 0.5, y = 100, label = paste("FP =", round((pi0 * binw * nrow(de_results_BvT)), 0), " FDRe:", round(pi0 * alpha / mean(de_results_BvT$adj.P.Val <= alpha), 4), " FDR:", round((pi0 * binw * nrow(de_results_BvT))/table(de_results_BvT$adj.P.Val < alpha)[1], 4)), color = "black", size = 10) +
-  theme(axis.text=element_text(size=25), axis.title=element_text(size=25, face="bold"), legend.text=element_text(size=20), legend.title=element_text(size=20), plot.title = element_text(size = 19, face="bold"),
-        panel.border = element_rect(color = "black", fill = NA),
-        panel.grid = element_line(color = "#EEEEEE"),
-        panel.background = element_rect(fill = NA),
-        legend.key = element_rect(fill = NA)) +
-  xlab("P-value") + ylab("Count")
-
+    geom_histogram(binwidth = binw, fill = "Royalblue", boundary = 0, alpha=0.6) +
+    ggtitle(paste0(names$names2[names$names1 == name], ' (DEGs: ',sum(summary_efit[1] + summary_efit[3]),', Up-regulated: ',summary_efit[3],', Down-regulated: ',summary_efit[1],')')) +
+    geom_hline(yintercept = pi0 * binw * nrow(de_results_BvT), color="black", linetype="dashed", size=1) +
+    geom_vline(xintercept = alpha, col = "red") +
+    annotate("text", x = 0.5, y = 100, label = paste("FP =", round((pi0 * binw * nrow(de_results_BvT)), 0), " FDRe:", round(pi0 * alpha / mean(de_results_BvT$adj.P.Val <= alpha), 4), " FDR:", round((pi0 * binw * nrow(de_results_BvT))/table(de_results_BvT$adj.P.Val < alpha)[1], 4)), color = "black", size = 10) +
+    theme(axis.text=element_text(size=25), axis.title=element_text(size=25, face="bold"), legend.text=element_text(size=20), legend.title=element_text(size=20), plot.title = element_text(size = 19, face="bold"),
+          panel.border = element_rect(color = "black", fill = NA),
+          panel.grid = element_line(color = "#EEEEEE"),
+          panel.background = element_rect(fill = NA),
+          legend.key = element_rect(fill = NA)) +
+    xlab("P-value") + ylab("Count")
+  
 print(p)
 
 setwd(datadir)
@@ -1169,31 +2622,28 @@ pdf(paste0(state, "_", name, "_", Run, "_PVALUES.pdf"), width = 10, height = 7)
 print(p)
 dev.off()
 
-}
 
-## ----------------------------------------------------------------------------- DEG analysis
-
-if(state == "PDwLBP - PDwoLBP")
+## ----------------------------------------------------------------------------- DEG analysis using LMM
+if(state == "PDwLBP - PDwoLBP" & LMM)
 {
   #============================================ Within Slide Analysis - DEGs
   # https://bioconductor.org/packages/release/workflows/vignettes/GeoMxWorkflows/inst/doc/GeomxTools_RNA-NGS_Analysis.html
-  
-  target_Data_subset = target_Data
-  
+ 
   # Subset by genes and ROIs
-  target_Data_subset <- target_Data[fData(target_Data)$TargetName %in% row.names(assay(spe_ruv, "logcounts")), gsub('.dcc','',row.names(pData(target_Data))) %in% colnames(assay(spe_ruv, "logcounts"))]
-  
+  target_Data_subset <- target_Data[fData(target_Data)$TargetName %in% row.names(assay(spe_ruv3, "logcounts")), gsub('.dcc','',row.names(pData(target_Data))) %in% colnames(assay(spe_ruv3, "logcounts"))]
+  dim(target_Data_subset)
   table(pData(target_Data_subset)$segment)
   
   assayDataElement(object = target_Data_subset, elt = "exprs2") <- assayDataApply(target_Data_subset, 2, FUN = log, base = 2, elt = "exprs")
   
+  # I need the object in NanoStringGeoMxSet but spe_ruv3 is in SpatialExperiment format so I need to repalce the expression values
   for(i in 1:dim(assayDataElement(object = target_Data_subset, elt = "exprs"))[2])
   {
     print(i)
-    assayDataElement(object = target_Data_subset, elt = "exprs")[,i] = as.numeric(assay(spe_ruv, "logcounts")[,i])
+    assayDataElement(object = target_Data_subset, elt = "exprs")[,i] = as.numeric(assay(spe_ruv3, "logcounts")[,i])
   }
   
-  identical(as.numeric(assayDataElement(object = target_Data_subset, elt = "exprs")[,i]), as.numeric(assay(spe_ruv, "logcounts")[,i]))
+  identical(as.numeric(assayDataElement(object = target_Data_subset, elt = "exprs")[,i]), as.numeric(assay(spe_ruv3, "logcounts")[,i]))
   
   table(pData(target_Data_subset)$segment)
   target_Data_subset = target_Data_subset[,which(pData(target_Data_subset)$segment != "control")]
@@ -1203,14 +2653,24 @@ if(state == "PDwLBP - PDwoLBP")
   pData(target_Data_subset)$testRegion <- factor(pData(target_Data_subset)$segment, c("PD-with-LB", "PD-without-LB"))
   pData(target_Data_subset)[["slide"]] <-  factor(pData(target_Data_subset)[["slide name"]])
   
+  # add batch_combined
+  pData(target_Data_subset)[["batchslide"]] <-  factor(colData(spe_ruv3)$batchslide)
+  pData(target_Data_subset)[["batch_combined"]] <-  factor(colData(spe_ruv3)$batch_combined)
+  
+  colnames(colData(spe_ruv3))
+  # ~ FixedEffect1 (condition) + FixedEffect2 + ... + (1 | BatchFactor1)
+  # (1 | random intercept)
+  # Crossed vs. Nested Random Effects:
+  # (1 | MainBatch:SubBatch)
+  # (1 | random slope:random intercept)
+  # for independent technical batches like SequencingRun and ProcessingDate, crossed effects are usually appropriate.
+  
   # run LMM:
   # formula follows conventions defined by the lme4 package
-  results <- c()
-  
   mixedOutmc <-
     mixedModelDE(target_Data_subset,
                  elt = "exprs",
-                 modelFormula = ~ testRegion + (1 + testRegion | slide),
+                 modelFormula = ~ testRegion + (1 + testRegion | batch_combined),
                  groupVar = "testRegion",
                  nCores = parallel::detectCores(),
                  multiCore = TRUE)
@@ -1227,12 +2687,15 @@ if(state == "PDwLBP - PDwoLBP")
     unlist(lapply(colnames(mixedOutmc),
                   rep, nrow(mixedOutmc["lsmeans", ][[1]])))
   
+  # Benjamini-Hochberg (FDR control)
   r_test$FDR <- p.adjust(r_test$`Pr(>|t|)`, method = "fdr")
   r_test <- r_test[, c("Gene", "Contrast", "Estimate",
                        "Pr(>|t|)", "FDR")]
+
+  results <- c()
   results <- rbind(results, r_test)
-  table(results$FDR < 0.05 & results$Estimate < 0)
-  table(results$FDR < 0.05 & results$Estimate > 0)
+  table(results$FDR < 0.025 & results$Estimate < 0)
+  table(results$FDR < 0.025 & results$Estimate > 0)
   
   fwrite(results, paste0(datadir, 'Within_Slide_Analysis_DEGs_wol_vs_wl.txt'), quote = F, row.names = F, sep = '\t')
   
@@ -1240,109 +2703,54 @@ if(state == "PDwLBP - PDwoLBP")
   colnames(de_results_BvT)
   
   de_results_BvT = data.frame(logFC = results$Estimate, adj.P.Val =  results$FDR, row.names = results$Gene)
- 
-}else{
   
-fit <- lmFit(assay(spe_ruv, "logcounts"), design = design)
-fit_contrast <- contrasts.fit(fit, contrasts = contr.matrix)
-efit <- eBayes(fit_contrast, robust = TRUE)
-
-results_efit <- decideTests(efit, p.value = 0.025)
-summary_efit <- summary(results_efit)
-print(summary_efit)
-
-library(ggrepel)
-library(tidyverse)
-de_results_BvT <- topTable(efit, coef = 1, sort.by = "P", n = Inf)
-dim(de_results_BvT)
-dim(assay(spe_ruv, "logcounts"))
-de_results_BvT$TargetName = row.names(de_results_BvT)
-
-de_genes_toptable_BvT <- topTable(efit, coef = 1, sort.by = "P", n = Inf, p.value = 0.05)
-dim(de_genes_toptable_BvT)
-# options(ggrepel.max.overlaps = 10)
-
-#============================================ calculating sample size 
-
-#- effect size (Log fold change (LFC) estimates)
-# de_genes_toptable_BvT_001 <- topTable(efit, coef = 1, sort.by = "P", n = Inf, p.value = 0.01)
-# dim(de_genes_toptable_BvT_001)
-# summary(de_genes_toptable_BvT_001$logFC) # The fact that limma gives log2 results is mentioned many times in the documentation.
-# # Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# # -1.7048 -0.8966 -0.6015 -0.1493  0.9815  2.0953 
-# # A log2 fold change of 1 means the gene is expressed twice as high in the test condition.
-# # A log2 fold change of 2 means the gene is expressed four times higher in the test condition.
-# # A log2 fold change of 3 means the gene is expressed eight times higher in the test condition, and so on.
-# 
-# # Cohen suggests that d values of 0.2, 0.5, and 0.8 represent small, medium, and large effect sizes respectively.
-# # I select 0.5
-# 
-# results <- pwr::pwr.t.test(n = NULL,
-#                            sig.level = 0.05, 
-#                            type = "two.sample", 
-#                            alternative = "two.sided", 
-#                            power = 0.80, 
-#                            d = 0.5)
-# 
-# plot(results) +
-#   ggplot2::theme_minimal(base_size = 14) +
-#   labs(title = 'Optimizing Sample Size for 2-Sided t test',
-#        subtitle = "")
-
-## ----------------------------------------------------------------------------- visualization of DEGs
-summary(de_results_BvT$logFC)
-table(de_results_BvT$adj.P.Val < 0.05 & de_results_BvT$logFC > 0) # using logFC > 0.1 gives me same results
-table(de_results_BvT$adj.P.Val < 0.05 & de_results_BvT$logFC < 0)
-dim(de_results_BvT)
-
-# de_results_BvT %>% 
-#   mutate(DE = ifelse(logFC > 0 & adj.P.Val <0.05, "UP", 
-#                      ifelse(logFC <0 & adj.P.Val<0.05, "DOWN", "NOT DE"))) %>%
-#   ggplot(aes(AveExpr, logFC, col = DE)) + 
-#   geom_point(shape = 1, size = 1) + 
-#   geom_text_repel(data = de_genes_toptable_BvT %>% 
-#                     mutate(DE = ifelse(logFC > 0 & adj.P.Val <0.05, "UP", 
-#                                        ifelse(logFC <0 & adj.P.Val<0.05, "DOWN", "NOT DE"))) %>%
-#                     rownames_to_column(), aes(label = rowname)) +
-#   theme_bw() +
-#   xlab("Average log-expression") +
-#   ylab("Log-fold-change") +
-#   ggtitle("LB509+TH+ vs LB509-TH+ as reference (limma-voom)") +
-#   scale_color_manual(values = c("dodgerblue","lightblue","orange2")) +
-#   theme(text = element_text(size=15))
-# 
-# dev.off()
-
-library(DT)
-updn_cols <- c(RColorBrewer::brewer.pal(6, 'Greens')[2], RColorBrewer::brewer.pal(6, 'Purples')[2])
-
-library(data.table)
-fwrite(de_results_BvT, paste0(datadir, Run, "_", query, "_", control, '_GeoMx_DEA_20KNTC.txt'), quote = F, row.names = F, sep = '\t')
-
-#======
-# temp = fread(paste0(datadir, 'GeoMx_DEA.txt'), stringsAsFactors = F, header = T)
-# 
-# dim(temp)
-# dim(de_genes_toptable_BvT)
-# length(which(de_genes_toptable_BvT$TargetName %in% temp$TargetName))
-#======
-de_results_BvT <- topTable(efit, coef = 1, sort.by = "P", n = Inf)
-class(de_results_BvT)
-
+  #====== pvalue plot
+  
+  ## --- "Visual estimation of the FDR with the p-value histogram."
+  alpha = binw = 0.025
+  pi0 = 2 * mean(de_results_BvT$adj.P.Val > 0.5)
+  
+  pi0 * alpha / mean(de_results_BvT$adj.P.Val <= alpha)
+  (pi0 * binw * nrow(de_results_BvT))/table(de_results_BvT$adj.P.Val < alpha)[1]
+  
+  #---- 
+  library(ggplot2)
+  
+  sum(summary_efit[1] + summary_efit[2] + summary_efit[3])
+  
+  p = ggplot(as(de_results_BvT, "data.frame"), aes(x = adj.P.Val)) +
+    geom_histogram(binwidth = binw, fill = "Royalblue", boundary = 0, alpha=0.6) +
+    ggtitle(paste0(names$names2[names$names1 == name], ' (DEGs: ',sum(summary_efit[1] + summary_efit[3]),', Up-regulated: ',summary_efit[3],', Down-regulated: ',summary_efit[1],')')) +
+    geom_hline(yintercept = pi0 * binw * nrow(de_results_BvT), color="black", linetype="dashed", size=1) +
+    geom_vline(xintercept = alpha, col = "red") +
+    annotate("text", x = 0.5, y = 100, label = paste("FP =", round((pi0 * binw * nrow(de_results_BvT)), 0), " FDRe:", round(pi0 * alpha / mean(de_results_BvT$adj.P.Val <= alpha), 4), " FDR:", round((pi0 * binw * nrow(de_results_BvT))/table(de_results_BvT$adj.P.Val < alpha)[1], 4)), color = "black", size = 10) +
+    theme(axis.text=element_text(size=25), axis.title=element_text(size=25, face="bold"), legend.text=element_text(size=20), legend.title=element_text(size=20), plot.title = element_text(size = 19, face="bold"),
+          panel.border = element_rect(color = "black", fill = NA),
+          panel.grid = element_line(color = "#EEEEEE"),
+          panel.background = element_rect(fill = NA),
+          legend.key = element_rect(fill = NA)) +
+    xlab("P-value") + ylab("Count")
+  
+  print(p)
+  
+  setwd(datadir)
+  pdf(paste0(state, "_", name, "_", Run, "_LMM_PVALUES.pdf"), width = 10, height = 7)
+  print(p)
+  dev.off()
 }
 
 #====== volcono plot
 library(ggrepel)
 # Categorize de_results_BvT based on P-value & FDR for plotting
 de_results_BvT$Color <- "NS or FC < 0.5"
-de_results_BvT$Color[which(de_results_BvT$adj.P.Val < 0.05)] <- "FDR < 0.05"
-de_results_BvT$Color[which(de_results_BvT$adj.P.Val < 0.01 & de_results_BvT$logFC > 0)] <- "FDR < 0.01 & up-regulated"
-de_results_BvT$Color[which(de_results_BvT$adj.P.Val < 0.01 & de_results_BvT$logFC < 0)] <- "FDR < 0.01 & down-regulated"
+de_results_BvT$Color[which(de_results_BvT$adj.P.Val < 0.025)] <- "FDR < 0.025"
+de_results_BvT$Color[which(de_results_BvT$adj.P.Val < 0.01 & de_results_BvT$logFC > 0.1)] <- "FDR < 0.01 & up-regulated"
+de_results_BvT$Color[which(de_results_BvT$adj.P.Val < 0.01 & de_results_BvT$logFC < -0.1)] <- "FDR < 0.01 & down-regulated"
 de_results_BvT$Color[which(abs(de_results_BvT$logFC) < 0.1)] <- "NS or FC < 0.1"
 de_results_BvT$Color <- factor(de_results_BvT$Color,
-                               levels = c("NS or FC < 0.1", "FDR < 0.05", "FDR < 0.01 & up-regulated", "FDR < 0.01 & down-regulated"))
+                               levels = c("NS or FC < 0.1", "FDR < 0.025", "FDR < 0.01 & up-regulated", "FDR < 0.01 & down-regulated"))
 table(de_results_BvT$Color)
-
+  
 # pick top TargetNames for either side of volcano to label
 # order TargetNames for convenience:
 de_results_BvT$invert_P <- (-log10(de_results_BvT$adj.P.Val)) * sign(de_results_BvT$logFC)
@@ -1365,19 +2773,20 @@ table(de_results_BvT$Color)
 library(dplyr)
 # Graph de_results_BvT
 DEG_Plot = ggplot(de_results_BvT,
-       aes(x = logFC, y = -log10(adj.P.Val),
-           color = Color, label = TargetName)) +
-  geom_vline(xintercept = c(0.5, -0.5), lty = "dashed") +
-  geom_hline(yintercept = -log10(0.05), lty = "dashed") +
+                  aes(x = logFC, y = -log10(adj.P.Val),
+                      color = Color, label = TargetName)) +
   geom_point() +
+  geom_vline(xintercept = c(0.1, -0.1), lty = "dashed") +
+  geom_hline(yintercept = -log10(0.025), lty = "dashed") +
+  ggtitle(name) + 
   labs(x = expression(paste('Log'['2'],' fold change')),
        y = expression(paste('Log'['10'],'P')) ,
        color = "Significance") +
-  scale_color_manual(values = c(`FDR < 0.01 & down-regulated` = "dodgerblue",
-                                `FDR < 0.01 & up-regulated` = "darkred",
-                                `FDR < 0.05` = "lightblue",
+  scale_color_manual(values = c(`FDR < 0.01 & down-regulated` = "#56B4E9",
+                                `FDR < 0.01 & up-regulated` = "#D55E00",
+                                `FDR < 0.025` = "lightblue",
                                 `P < 0.01` = "orange2",
-                                `NS or FC < 0.5` = "gray"),
+                                `NS or FC < 0.1` = "gray"),
                      guide = guide_legend(override.aes = list(size = 4))) +
   scale_y_continuous(expand = expansion(mult = c(0,0.05))) +
   geom_text_repel(data = subset(de_results_BvT, TargetName %in% top_g & adj.P.Val < 0.025),
@@ -1386,12 +2795,83 @@ DEG_Plot = ggplot(de_results_BvT,
                   max.overlaps = 50) +
   theme_bw(base_size = 20) +
   theme(legend.position = "bottom")
+print(DEG_Plot)
 
-getwd()
-pdf(paste0(gsub(' ','',Run), "_", query, "_", control, "_DEG_Plot.pdf"), width = 10.5, height = 8)
+setwd(datadir)
+pdf(paste0(state, "_", name, "_", Run, "_Volcanoplot.pdf"), width = 10, height = 7)
 print(DEG_Plot)
 dev.off()
 
+#====== heatmap
+
+de_results_BvT_sig = de_results_BvT[order(de_results_BvT$adj.P.Val, decreasing = F),]
+
+upregulated = row.names(de_results_BvT_sig)[which(de_results_BvT_sig$adj.P.Val < 0.01 & de_results_BvT_sig$logFC > 0)]
+downregulated = row.names(de_results_BvT_sig)[which(de_results_BvT_sig$adj.P.Val < 0.01 & de_results_BvT_sig$logFC < 0)]
+
+if(state != "PDwLBP - PDwoLBP")
+{
+  CountMatrix_subset = CountMatrix
+}
+
+length(which(row.names(CountMatrix_subset) %in% c(upregulated[1:10], downregulated[1:10]) ))
+CountMatrix_subset = CountMatrix_subset[which(row.names(CountMatrix_subset) %in% c(upregulated[1:10], downregulated[1:10]) ),]
+dim(CountMatrix_subset)
+
+#------ heatmap
+State = as.character(colnames(CountMatrix_subset))
+State[grep('V', State)] = 'Vulnerable Neurons'
+State[grep('R', State)] = 'Resistant Neurons'
+State[grep('C', State)] = 'Healthy Neurons'
+
+annotation_col = data.frame(
+  State = factor(State, levels = unique(State))
+)
+rownames(annotation_col) = as.character(colnames(CountMatrix_subset))
+str(annotation_col)
+
+annotation_row = data.frame(
+  GeneClass = factor(rep(c('Up-regulated', 'Down-regulated'), c(10, 10)), levels = c('Up-regulated', 'Down-regulated'))
+)
+
+rownames(annotation_row) = c(upregulated[1:10], downregulated[1:10])
+CountMatrix_subset = CountMatrix_subset[match(rownames(annotation_row), row.names(CountMatrix_subset)),]
+identical(row.names(CountMatrix_subset), row.names(annotation_row))
+
+ann_colors = list(
+  State = c(S1 = "#1B9E77", S2 = "#D95F02"),
+  GeneClass = c(`Up-regulated` = "#7570B3", `Down-regulated` = "#E7298A")
+)
+
+names(ann_colors$State)[1] = unique(State)[1]
+names(ann_colors$State)[2] = unique(State)[2]
+
+#-- revise colnames
+colnames(CountMatrix_subset)[grep('V', colnames(CountMatrix_subset))] = rep(paste0('Donor-', 1:length(grep('V', colnames(CountMatrix_subset))), '-V' ), each = 1)
+colnames(CountMatrix_subset)[grep('R', colnames(CountMatrix_subset))] = rep(paste0('Donor-', 1:length(grep('R', colnames(CountMatrix_subset))), '-R' ), each = 1)
+colnames(CountMatrix_subset)[grep('C', colnames(CountMatrix_subset))] = rep(paste0('Donor-', 1:length(grep('C', colnames(CountMatrix_subset))), '-C' ), each = 1)
+#--
+
+library(hgnc)
+library(data.table)
+library(ComplexHeatmap)
+p <- pheatmap(CountMatrix_subset, annotation_col = annotation_col, annotation_row = annotation_row, 
+              annotation_colors = ann_colors, 
+              row_split = annotation_row$GeneClass,
+              column_split = annotation_col$State, name = "Expression", scale='row',
+              fontsize_number=8, display_numbers = round(as.matrix(CountMatrix_subset), digits = 1), cluster_cols=FALSE  )
+p
+
+sampleAnnotationFile = fread(paste0(datadir, 'QC_All.txt'), stringsAsFactors = F, header = T)
+sampleAnnotationFile = as.data.frame(sampleAnnotationFile)
+
+sampleAnnotationFile[which(sampleAnnotationFile$`slide name` %in% c('12/046 Run 1')), ]
+sampleAnnotationFile[which(sampleAnnotationFile$`slide name` %in% c('13/021 Run 1')), ]
+sampleAnnotationFile[which(sampleAnnotationFile$`slide name` %in% c('20/009 Run 1')), ]
+sampleAnnotationFile[which(sampleAnnotationFile$`slide name` %in% c('PD1101 Run 1')), ]
+sampleAnnotationFile[which(sampleAnnotationFile$`slide name` %in% c('PD1310 Run 1')), ]
+
+unique(gsub('.*\\-', '', gsub('-A01.dcc', '', sampleAnnotationFile$NTC_ID))[which(sampleAnnotationFile$NTC > 8000)])
 
 ## ----------------------------------------------------------------------------- visualization of DEGs as table
 # de_genes_toptable_BvT %>% 
@@ -1422,7 +2902,7 @@ dev.off()
 #   GeneSetCollection()
 # 
 # # Preprocessing is conducted on these genesets, filtering out genesets with less than 5 genes and creating indices vector list for formatting on the results before applying fry.
-# GeneList = assay(spe_ruv, "logcounts")
+# GeneList = assay(spe_ruv3, "logcounts")
 # 
 # GeneList_subset = row.names(GeneList[which(row.names(GeneList) %in% row.names(de_genes_toptable_BvT[which(de_genes_toptable_BvT$adj.P.Val < 1e-5), ])),])
 # 
@@ -1572,12 +3052,16 @@ dev.off()
 library('org.Hs.eg.db')
 keytypes(org.Hs.eg.db)
 
-input = de_results_BvT[de_results_BvT$adj.P.Val < 0.05,]
+input = de_results_BvT[which(de_results_BvT$adj.P.Val < 0.05 & abs(de_results_BvT$logFC) > 0.1),] # 
+input$TargetName = row.names(input)
+
 input = input[-which(is.na(as.character(mapIds(org.Hs.eg.db, input$TargetName, 'ENTREZID', 'SYMBOL')))),]
 row.names(input) = as.character(mapIds(org.Hs.eg.db, input$TargetName, 'ENTREZID', 'SYMBOL'))
+dim(input)
 
 getwd()
 library("pathview")
+
 ###################################################
 ### code chunk number 15: kegg.native
 ###################################################
@@ -1612,15 +3096,15 @@ for(p in 1:length(list_pathways))
 
 #--- gene enrichment analysis
 library('org.Hs.eg.db')
-BD = 'c5.all.v2023.1.Hs.entrez.gmt'
+BD = 'h.all.v2024.1.Hs.entrez.gmt'
 
 library(qusage)
 library(clusterProfiler)
-gmtfile <- paste0("/Users/isarnassiri/Documents/Parkinson/scRNAseq-Parkkinen/Scripts_USED_visium/msigdb_v2023_Hs/", BD)
+gmtfile <- paste0("/Users/isarnassiri/Documents/GeoMx_Analysis/reference_datasets/msigdb_v2024.1.Hs_GMTs/", BD)
 c5 <- read.gmt(gmtfile)
 
 # use mapIds method to obtain Entrez IDs
-input = de_results_BvT[de_results_BvT$adj.P.Val < 0.05,]
+# input = de_results_BvT[de_results_BvT$adj.P.Val < 0.05,]
 de = as.character(mapIds(org.Hs.eg.db, input$TargetName, 'ENTREZID', 'SYMBOL'))
 
 table(c5$term)
@@ -1628,7 +3112,7 @@ c5$term = sub("^[^_]*_", "", c5$term)
 
 egmt <- enricher(de[!is.na(de)], TERM2GENE=c5)
 
-if(length(unique(egmt@result$p.adjust < 0.05))>1)
+if(as.numeric(table(egmt@result$p.adjust < 0.05)['TRUE'])>5)
 {
   library(cowplot)
   library(ggplot2)
@@ -1645,19 +3129,35 @@ if(length(unique(egmt@result$p.adjust < 0.05))>1)
 #--- gene enrichment analysis
 library("DOSE")
 edo <- enrichDGN(de[!is.na(de)])
+
+#--- grep multiple pattern
+toMatch <- c("Disease", "Disorders", "syndrome", "Parkin")
+
+# OR
+matches <- unique(grep(paste(toMatch,collapse="|"), edo@result$Description, value=TRUE))
+
+#-- keep terms related to diseases
+edo@result = edo@result[which(edo@result$Description %in% matches),]
+
+## convert gene ID to Symbol
 edox <- setReadable(edo, 'org.Hs.eg.db', 'ENTREZID')
+
+# View(edo@result)
 
 library(enrichplot)
 # barplot(edo, showCategory=10)
 # dotplot(edo, showCategory=15) + ggtitle(print(paste0(  S )))
-# cnetplot(edox, circular = TRUE, colorEdge = TRUE)
-
-if(length(unique(edo@result$p.adjust < 0.05))>1)
+ 
+if(as.numeric(table(edo@result$p.adjust < 0.05)['TRUE'])>5)
 {
-  pdf(paste0(gsub(' ','',Run), "_", query, "_", control, '_DiseaseEnrichment.pdf'),width = 8, height = 9, useDingbats = FALSE)
+  pdf(paste0(gsub(' ','',Run), "_", query, "_", control, '_DiseaseEnrichment_dotplot.pdf'),width = 8, height = 9, useDingbats = FALSE)
   print(dotplot(edo, showCategory=15))
   dev.off()
-
+  
+  pdf(paste0(gsub(' ','',Run), "_", query, "_", control, '_DiseaseEnrichment_cnetplot.pdf'),width = 8, height = 9, useDingbats = FALSE)
+  print(cnetplot(edox, circular = TRUE, colorEdge = TRUE))
+  dev.off()
+  
   fwrite(edo@result, paste0(gsub(' ','',Run), "_", query, "_", control, '_DiseaseEnrichment.txt') , quote = F, sep = '\t', row.names = F)
 }
 }
@@ -1670,7 +3170,7 @@ if(length(unique(edo@result$p.adjust < 0.05))>1)
 ## ----------------------------------------------------------------------------- intersection of DEGs per state
 setwd('/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3_S4/')
 
-listFiles = list.files(pattern = '_GeoMx_DEA_20KNTC.txt')
+listFiles = list.files(pattern = '_GeoMx_DEA.txt')
 
 #--- gene enrichment analysis
 library(data.table)
@@ -1690,16 +3190,16 @@ c5$term = sub("^[^_]*_", "", c5$term)
 
 for(filename in listFiles)
 {
-  print(gsub('Run 1_|_GeoMx_DEA_20KNTC.txt','',filename))
+  print(gsub('Run 1_|_GeoMx_DEA.txt','',filename))
   Temp = data.frame(fread(filename, stringsAsFactors = F, header = T))
   Temp = Temp[which(Temp$adj.P.Val < 0.025),]
   print(dim(Temp))
   
-  assign(gsub('Run 1_|_GeoMx_DEA_20KNTC.txt','',filename), Temp$TargetName)
+  assign(gsub('Run 1_|_GeoMx_DEA.txt','',filename), Temp$TargetName)
   
   input_used = Temp$logFC
   names(input_used) = Temp$TargetName
-  assign(paste0(gsub('Run 1_|_GeoMx_DEA_20KNTC.txt','',filename), '_KEGG'), input_used)
+  assign(paste0(gsub('Run 1_|_GeoMx_DEA.txt','',filename), '_KEGG'), input_used)
   
   #---------------------- Pathway enrichment
   
@@ -1713,23 +3213,23 @@ for(filename in listFiles)
   {
     
     #-- all
-    p2 <- dotplot(egmt, showCategory=5) + ggtitle(gsub('Run 1_|_GeoMx_DEA_20KNTC.txt','',filename))
+    p2 <- dotplot(egmt, showCategory=5) + ggtitle(gsub('Run 1_|_GeoMx_DEA.txt','',filename))
     
-    pdf(paste0(gsub('Run 1_|_GeoMx_DEA_20KNTC.txt','',filename), '_setDiff_PathwayEnrichment.pdf'), width = 8, height = 10, useDingbats = FALSE)
+    pdf(paste0(gsub('Run 1_|_GeoMx_DEA.txt','',filename), '_setDiff_PathwayEnrichment.pdf'), width = 8, height = 10, useDingbats = FALSE)
     print(plot_grid(p2, ncol=1))
     dev.off()
     
-    fwrite(egmt@result, paste0(gsub('Run 1_|_GeoMx_DEA_20KNTC.txt','',filename), '_setDiff_PathwayEnrichment.txt'), quote = F, sep = '\t', row.names = F)
+    fwrite(egmt@result, paste0(gsub('Run 1_|_GeoMx_DEA.txt','',filename), '_setDiff_PathwayEnrichment.txt'), quote = F, sep = '\t', row.names = F)
     
     #-- disease
     edo <- enrichDGN(de[!is.na(de)])
     edox <- setReadable(edo, 'org.Hs.eg.db', 'ENTREZID')
     
-    pdf(paste0(gsub('Run 1_|_GeoMx_DEA_20KNTC.txt','',filename), '_setDiff_DiseaseEnrichment.pdf'), width = 8, height = 10, useDingbats = FALSE)
+    pdf(paste0(gsub('Run 1_|_GeoMx_DEA.txt','',filename), '_setDiff_DiseaseEnrichment.pdf'), width = 8, height = 10, useDingbats = FALSE)
     print(dotplot(edo, showCategory=10))
     dev.off()
     
-    fwrite(edo@result, paste0(gsub('Run 1_|_GeoMx_DEA_20KNTC.txt','',filename), '_setDiff_DiseaseEnrichment.txt'), quote = F, sep = '\t', row.names = F)
+    fwrite(edo@result, paste0(gsub('Run 1_|_GeoMx_DEA.txt','',filename), '_setDiff_DiseaseEnrichment.txt'), quote = F, sep = '\t', row.names = F)
   }
   
   # x2 <- list(
@@ -1831,7 +3331,7 @@ library(data.table)
 # GeoMx_metadata = read_excel(paste0(datadir, 'annotation/Annotation_File.xlsx'))
 # dim(GeoMx_metadata)
 
-filenames =  list.files('/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3_S4/', pattern = '_GeoMx_DEA_20KNTC.txt')
+filenames =  list.files('/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3_S4/', pattern = '_GeoMx_DEA.txt')
 require(data.table) ## 1.9.2 or 1.9.3
 GeoMx_DEG = rbindlist(lapply(filenames, fread))
 GeoMx_DEG = GeoMx_DEG[which(GeoMx_DEG$adj.P.Val < 0.01), ]
@@ -1889,7 +3389,7 @@ names(spe_ruv@assays)
 molecules(spe_ruv)
 
 library(data.table)
-fwrite(de_results_BvT, paste0(datadir, Run, "_", query, "_", control, '_GeoMx_DEA_20KNTC.txt'), quote = F, row.names = F, sep = '\t')
+fwrite(de_results_BvT, paste0(datadir, Run, "_", query, "_", control, '_GeoMx_DEA.txt'), quote = F, row.names = F, sep = '\t')
 
 
 
@@ -2572,3 +4072,29 @@ fwrite(de_results_BvT, paste0(datadir, Run, "_", query, "_", control, '_GeoMx_DE
 # pdf(paste0(name, "_PVALUES.pdf"), width = 10, height = 7)
 # print(p)
 # dev.off()
+
+
+#---------------------------- select samples for transferring to GSK
+# setwd('/Users/isarnassiri/Documents/GeoMx_Analysis')
+# library(data.table)
+# List_excluding_samples_GSK = fread(paste0('List_excluding_samples_GSK.txt'), stringsAsFactors = F)
+# List_excluding_samples_GSK$SampleIDs = gsub('-','.',List_excluding_samples_GSK$SampleIDs)
+# 
+# GeoMx_TMM_RUV4_CellTypeCorrection_readCount = fread(paste0('/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3_S4_limma_20k/GeoMx_TMM_RUV4_CellTypeCorrection_readCount.txt'), stringsAsFactors = F)
+# GeoMx_TMM_RUV4_CellTypeCorrection_readCount = as.data.frame(GeoMx_TMM_RUV4_CellTypeCorrection_readCount)
+# 
+# GeoMx_readCount = fread(paste0('/Users/isarnassiri/Documents/GeoMx_Analysis/Machine_output_S3_S4_limma_20k/GeoMx_readCount.txt'), stringsAsFactors = F)
+# GeoMx_readCount = as.data.frame(GeoMx_readCount)
+# colnames(GeoMx_readCount)[-1] = gsub('.dcc', '', colnames(GeoMx_readCount)[-1])
+# 
+# GeoMx_TMM_RUV4_CellTypeCorrection_readCount = GeoMx_TMM_RUV4_CellTypeCorrection_readCount[,-which(colnames(GeoMx_TMM_RUV4_CellTypeCorrection_readCount) %in% c(List_excluding_samples_GSK$SampleIDs))]
+# GeoMx_readCount = GeoMx_readCount[,-which(colnames(GeoMx_readCount) %in% c(List_excluding_samples_GSK$SampleIDs))]
+# 
+# fwrite(GeoMx_TMM_RUV4_CellTypeCorrection_readCount, paste0('GeoMx_TMM_RUV4_CellTypeCorrection_readCount.txt'), quote = F, sep = '\t', row.names = T)
+# fwrite(GeoMx_readCount, paste0('GeoMx_readCount.txt'), quote = F, sep = '\t', row.names = T)
+
+
+
+
+
+
